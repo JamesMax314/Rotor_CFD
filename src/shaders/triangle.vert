@@ -1,6 +1,9 @@
 #version 450
 //output variable to the fragment shader
-layout (location = 0) out vec3 outColor;
+layout(location = 0) in vec3 inPos;
+layout(location = 1) in vec2 inUV;
+
+layout (location = 0) out vec2 fragUV;
 
 void main()
 {
@@ -19,6 +22,7 @@ void main()
 	);
 
 	//output the position of each vertex
-	gl_Position = vec4(positions[gl_VertexIndex], 1.0f);
-	outColor = colors[gl_VertexIndex];
+	// gl_Position = vec4(positions[gl_VertexIndex], 1.0f);
+	gl_Position = vec4(inPos, 1.0);
+	fragUV = inUV;
 }

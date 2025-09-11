@@ -49,19 +49,21 @@ void VulkanEngine::init()
 
 	printf("init sync structures complete\n");
 
-	init_3D_texture();
+	// init_3D_texture();
 
-	printf("init 3D texture complete\n");
+	// printf("init 3D texture complete\n");
 
-    init_pipelines();
-
-	printf("init pipelines complete\n");
-
-    initSSBOs();
+	initSSBOs();
 
 	printf("init SSBOs complete\n");
 
-    initComputeKernels();
+    // init_pipelines();
+
+	printf("init pipelines complete\n");
+
+
+
+    initKernels();
 
 	//everything went fine
 	_isInitialized = true;
@@ -80,44 +82,71 @@ void VulkanEngine::initSSBOs() {
 		throw std::runtime_error("Failed to create VMA allocator!");
 	}
 
-    vkinit::createStorageBuffers(_device, _allocator, _advectBuffers);
+	_resourceBindings[11].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	vkinit::createResources(_device, _allocator, _resourceBindings, {_res, _res, _res}, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+	_resourceBindings[11].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; // revert back for compute shader
+
+	VkCommandBuffer cmd = vkinit::beginSingleTimeCommands(_device, _commandPool);
+
+	vkinit::transitionImageLayout(
+		cmd,
+		_resourceBindings[11].image,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_GENERAL,
+		0,    // srcStage (instead of 0)
+		VK_ACCESS_SHADER_WRITE_BIT, // dstStage
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,                                    // srcAccessMask
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT            // dstAccessMask
+	);
+
+
+
+	vkinit::endSingleTimeCommands(_device, _commandPool, _graphicsQueue, cmd);
+
+	vkinit::initMesh(_quadMesh, _device, _commandPool, _graphicsQueue, _allocator, _quadVertices, _quadIndices);
+
+	printf("Buffers and textures created\n");
 }
 
-void VulkanEngine::initComputeKernels() {
-	// Binding in first column, change for different shaders. The actual buffers are already initialised
-    std::vector<VkDescriptorSetLayoutBinding> advectBindings = {
-        // Storage buffers (read/write)
-        {0,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velX
-        {1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velY
-        {2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velZ
-        {3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // density
-        {4,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // pressure
-        {5,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velX2
-        {6,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velY2
-        {7,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velZ2
-        {8,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // density2
-        {9,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // pressure2
-        {10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // boundaries
+void VulkanEngine::initKernels() {
+	VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(CamData);
+	std::vector<VkPushConstantRange> pushConstants = { pushConstantRange };
 
-        // Storage image (writeonly)
-        {11, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // outputTexture
-    };
 
-    _cp = vkinit::initKernel(_device, "build/shaders/advect.comp.spv", advectBindings);
+    _cp = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/advect.comp.spv" }, _layoutBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _cp, _resourceBindings);
 
 	printf("Compute kernel initialized\n");
 
-    vkinit::updateStorageBuffers(_device, _cp.descriptorSet, _advectBuffers);
+	// If you want to use a subset of the resources and bindings, you can do so like this:
+	std::vector<uint32_t> activeBindings = {11};
+	auto subsetResources = vkinit::subsetVector(_resourceBindings, activeBindings);
+	subsetResources[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; // Change type for rendering
+	std::vector<VkDescriptorSetLayoutBinding> subsetLayoutBindings = {{11, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
 
-    VkDescriptorImageInfo imageInfo{};
-    imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-    imageInfo.imageView = _3DTextureView;
-    imageInfo.sampler = VK_NULL_HANDLE;
+	_rp = vkinit::initKernel(_device, KernelType::Graphics, 
+		{"build/shaders/triangle.vert.spv", "build/shaders/triangle.frag.spv"}, 
+		subsetLayoutBindings, pushConstants, _renderPass, _windowExtent);
+	
+	vkinit::updateKernelDescriptors(_device, _rp, subsetResources);
 
-    VkWriteDescriptorSet descriptorWrite = vkinit::writeDescriptorImage(
-        _cp.descriptorSet, 11, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &imageInfo);
+	printf("Render kernel initialized\n");
 
-    vkUpdateDescriptorSets(_device, 1, &descriptorWrite, 0, nullptr);
+
+    // vkinit::updateStorageBuffers(_device, _cp.descriptorSet, _advectBuffers);
+
+    // VkDescriptorImageInfo imageInfo{};
+    // imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    // imageInfo.imageView = _3DTextureView;
+    // imageInfo.sampler = VK_NULL_HANDLE;
+
+    // VkWriteDescriptorSet descriptorWrite = vkinit::writeDescriptorImage(
+    //     _cp.descriptorSet, 11, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &imageInfo);
+
+    // vkUpdateDescriptorSets(_device, 1, &descriptorWrite, 0, nullptr);
 }
 
 // Simplify
@@ -492,30 +521,42 @@ void VulkanEngine::compute()
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
     // --- 1. Transition image to GENERAL for compute
-    VkImageMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = _3DTexture;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
-    barrier.srcAccessMask = 0;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    // VkImageMemoryBarrier barrier{};
+    // barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    // barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    // barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+    // barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    // barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    // barrier.image = _3DTexture;
+    // barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    // barrier.subresourceRange.baseMipLevel = 0;
+    // barrier.subresourceRange.levelCount = 1;
+    // barrier.subresourceRange.baseArrayLayer = 0;
+    // barrier.subresourceRange.layerCount = 1;
+    // barrier.srcAccessMask = 0;
+    // barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
 
-    vkCmdPipelineBarrier(
-        cmd,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        0,
-        0, nullptr,
-        0, nullptr,
-        1, &barrier
-    );
+    // vkCmdPipelineBarrier(
+    //     cmd,
+    //     VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+    //     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+    //     0,
+    //     0, nullptr,
+    //     0, nullptr,
+    //     1, &barrier
+    // );
+
+	vkinit::transitionImageLayout(
+		cmd,
+		_resourceBindings[11].image,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_GENERAL,
+		0,
+		VK_ACCESS_SHADER_WRITE_BIT,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+	);
+
 
     // --- 2. Bind compute pipeline and descriptor set
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _cp.pipeline);
@@ -537,33 +578,7 @@ void VulkanEngine::compute()
     int dispatchX = (_res + groupSize - 1) / groupSize;
     int dispatchY = (_res + groupSize - 1) / groupSize;
     int dispatchZ = (_res + groupSize - 1) / groupSize;
-    vkCmdDispatch(cmd, dispatchX, dispatchY, dispatchZ);
-
-    // --- 4. (Optional) Barrier to prepare for sampling later
-    VkImageMemoryBarrier barrier2{};
-    barrier2.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier2.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-    barrier2.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    barrier2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier2.image = _3DTexture;
-    barrier2.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    barrier2.subresourceRange.baseMipLevel = 0;
-    barrier2.subresourceRange.levelCount = 1;
-    barrier2.subresourceRange.baseArrayLayer = 0;
-    barrier2.subresourceRange.layerCount = 1;
-    barrier2.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barrier2.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-    vkCmdPipelineBarrier(
-        cmd,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-        0,
-        0, nullptr,
-        0, nullptr,
-        1, &barrier2
-    );
+    vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
 
     VK_CHECK(vkEndCommandBuffer(cmd));
 
@@ -630,8 +645,20 @@ void VulkanEngine::draw()
 
 	vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
-    vkCmdDraw(cmd, 3, 1, 0, 0);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _rp.pipeline);
+
+	vkCmdBindDescriptorSets(
+		cmd,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		_rp.pipelineLayout,
+		0, // first set
+		1, &_rp.descriptorSet,
+		0, nullptr
+	);
+
+	_quadMesh.draw(cmd);
+
+    // vkCmdDraw(cmd, 3, 1, 0, 0);
 
     //finalize the render pass
 	vkCmdEndRenderPass(cmd);
@@ -701,61 +728,5 @@ void VulkanEngine::run()
 
         compute();
 		draw();
-	}
-}
-
-
-VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {
-    //make viewport state from our stored viewport and scissor.
-    //at the moment we won't support multiple viewports or scissors
-    VkPipelineViewportStateCreateInfo viewportState = {};
-    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewportState.pNext = nullptr;
-
-    viewportState.viewportCount = 1;
-    viewportState.pViewports = &_viewport;
-    viewportState.scissorCount = 1;
-    viewportState.pScissors = &_scissor;
-
-    //setup dummy color blending. We aren't using transparent objects yet
-    //the blending is just "no blend", but we do write to the color attachment
-    VkPipelineColorBlendStateCreateInfo colorBlending = {};
-    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    colorBlending.pNext = nullptr;
-
-    colorBlending.logicOpEnable = VK_FALSE;
-    colorBlending.logicOp = VK_LOGIC_OP_COPY;
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &_colorBlendAttachment;
-
-    //build the actual pipeline
-	//we now use all of the info structs we have been writing into into this one to create the pipeline
-	VkGraphicsPipelineCreateInfo pipelineInfo = {};
-	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pipelineInfo.pNext = nullptr;
-
-	pipelineInfo.stageCount = _shaderStages.size();
-	pipelineInfo.pStages = _shaderStages.data();
-	pipelineInfo.pVertexInputState = &_vertexInputInfo;
-	pipelineInfo.pInputAssemblyState = &_inputAssembly;
-	pipelineInfo.pViewportState = &viewportState;
-	pipelineInfo.pRasterizationState = &_rasterizer;
-	pipelineInfo.pMultisampleState = &_multisampling;
-	pipelineInfo.pColorBlendState = &colorBlending;
-	pipelineInfo.layout = _pipelineLayout;
-	pipelineInfo.renderPass = pass;
-	pipelineInfo.subpass = 0;
-	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-
-	//it's easy to error out on create graphics pipeline, so we handle it a bit better than the common VK_CHECK case
-	VkPipeline newPipeline;
-	if (vkCreateGraphicsPipelines(
-		device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &newPipeline) != VK_SUCCESS) {
-		std::cout << "failed to create pipeline\n";
-		return VK_NULL_HANDLE; // failed to create graphics pipeline
-	}
-	else
-	{
-		return newPipeline;
 	}
 }

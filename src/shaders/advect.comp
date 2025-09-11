@@ -438,11 +438,14 @@ void main() {
     // pressure2[idx] = trilinearInterpolation_pressure(newPos);
 
     ivec3 coord = ivec3(get_grid_position(idx));
+    // coord = ivec3(0, 0, 0);
     // imageStore(outputTexture, coord, vec4(abs(0.0), abs(1.0), abs(1.0), 1.0));
     // imageStore(outputTexture, coord, vec4(abs(vel_x2[idx]), abs(vel_y2[idx]), abs(vel_z2[idx]), 1.0));
     // imageStore(outputTexture, coord, vec4(abs(newVelX), abs(newVelY), abs(newVelZ), 1.0));
     // imageStore(outputTexture, coord, vec4(abs(vx.x), abs(vx.y), abs(vx.z), 1.0));
-    imageStore(outputTexture, coord, vec4(1.0));
+    vec4 color = vec4(coord.x*1.0/gridSize, coord.y*1.0/gridSize, coord.z*1.0/gridSize, 1.0);
+    // vec4 color = vec4(0.5 + 0.5 * newVelX, 0, 0.5 + 0.5 * newVelZ, 1.0);
+    imageStore(outputTexture, coord, color);
 }
 
 // bool is_red(uint index) {

@@ -10,16 +10,6 @@
 
 //we want to immediately abort when there is an error. In normal engines this would give an error message to the user, or perform a dump of state.
 using namespace std;
-#define VK_CHECK(x)                                                 \
-	do                                                              \
-	{                                                               \
-		VkResult err = x;                                           \
-		if (err)                                                    \
-		{                                                           \
-			std::cout <<"Detected Vulkan error: " << err << std::endl; \
-			abort();                                                \
-		}                                                           \
-	} while (0)
 
 struct DeletionQueue
 {
@@ -42,7 +32,7 @@ struct DeletionQueue
 class VulkanEngine {
 public:
 
-    unsigned int _res = 128;
+    unsigned int _res = 129;
 	bool _isInitialized{ false };
 	int _frameNumber {0};
 
@@ -109,13 +99,45 @@ public:
     VkDeviceMemory _3DTextureMemory;
 
     Kernel _cp{};
+	Kernel _rp{};
 
     VkDeviceSize bufferSize = _res * _res * _res * sizeof(float);
-    std::vector<BufferBinding> _advectBuffers = {
-        {0, bufferSize}, {1, bufferSize}, {2, bufferSize}, {3, bufferSize}, {4, bufferSize},
-        {5, bufferSize}, {6, bufferSize}, {7, bufferSize}, {8, bufferSize}, {9, bufferSize},
-        {10, bufferSize}
+    std::vector<ResourceBinding> _resourceBindings = {
+        {0, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}, {1, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+		{2, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}, {3, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+		{4, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}, {5, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+		{6, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}, {7, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+		{8, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}, {9, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+        {10, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}, {11, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}
     };
+
+	std::vector<VkDescriptorSetLayoutBinding> _layoutBindings = {
+        // Storage buffers (read/write)
+        {0,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velX
+        {1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velY
+        {2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velZ
+        {3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // density
+        {4,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // pressure
+        {5,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velX2
+        {6,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velY2
+        {7,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velZ2
+        {8,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // density2
+        {9,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // pressure2
+        {10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // boundaries
+        // Storage image (writeonly)
+        {11, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // outputTexture
+    };
+
+	std::vector<Vertex> _quadVertices = {
+		{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}}, // bottom left
+		{{ 1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}, // bottom right
+		{{ 1.0f,  1.0f, 0.0f}, {1.0f, 1.0f}}, // top right
+		{{-1.0f,  1.0f, 0.0f}, {0.0f, 1.0f}}, // top left
+	};
+
+	std::vector<uint16_t> _quadIndices = { 0, 1, 2, 2, 3, 0 };
+
+	Mesh _quadMesh;
 
 private:
 
@@ -128,22 +150,6 @@ private:
     void init_pipelines();
     bool load_shader_module(const char* filePath, VkShaderModule* outShaderModule);
     void init_3D_texture();
-    void initComputeKernels();
+    void initKernels();
     void initSSBOs();
-};
-
-class PipelineBuilder {
-public:
-
-	std::vector<VkPipelineShaderStageCreateInfo> _shaderStages;
-	VkPipelineVertexInputStateCreateInfo _vertexInputInfo;
-	VkPipelineInputAssemblyStateCreateInfo _inputAssembly;
-	VkViewport _viewport;
-	VkRect2D _scissor;
-	VkPipelineRasterizationStateCreateInfo _rasterizer;
-	VkPipelineColorBlendAttachmentState _colorBlendAttachment;
-	VkPipelineMultisampleStateCreateInfo _multisampling;
-	VkPipelineLayout _pipelineLayout;
-
-	VkPipeline build_pipeline(VkDevice device, VkRenderPass pass);
 };
