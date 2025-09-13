@@ -8,26 +8,30 @@ layout (local_size_x = 32) in;
 const float dt = 0.1;
 const int dim = 3;
 
-layout(push_constant) uniform PushConstants {
-    int gridSize;
-    int shouldRed;
-} pushConstants;
+layout(push_constant) uniform CamData {
+    vec3 camPos;
+    float padding1; // padding to make size multiple of 16 bytes
+    vec3 camLookAt;
+    float padding2; // padding to make size multiple of 16 bytes
+} camData;
 
-int gridSize = pushConstants.gridSize;
+int gridSize = 129;//pushConstants.gridSize;
+int shouldRed = 1;
 
 layout(binding = 0) buffer velXBuff { float vel_x[]; };
 layout(binding = 1) buffer velYBuff { float vel_y[]; };
 layout(binding = 2) buffer velZBuff { float vel_z[]; };
-
 layout(binding = 3) buffer densityBuff { float density[]; };
 layout(binding = 4) buffer pressureBuff { float pressure[]; };
 
-layout(binding = 5) buffer density2Buff { float density2[]; };
-layout(binding = 6) buffer pressure2Buff { float pressure2[]; };
+layout(binding = 5) buffer velXBuff2 { float vel_x2[]; };
+layout(binding = 6) buffer velYBuff2 { float vel_y2[]; };
+layout(binding = 7) buffer velZBuff2 { float vel_z2[]; };
+layout(binding = 8) buffer density2Buff { float density2[]; };
+layout(binding = 9) buffer pressure2Buff { float pressure2[]; };
+layout(binding = 10) buffer boundariesBuff { float b[]; };
 
-layout(binding = 7) buffer boundariesBuff { float b[]; };
-
-layout(binding = 8, rgba32f) writeonly uniform image3D outputTexture;
+layout(binding = 11, rgba32f) writeonly uniform image3D outputTexture;
 
 uint get_grid_ind(ivec3 pos, uint sizeX, uint sizeY, uint sizeZ) {
     return pos.x + pos.y * sizeX + pos.z * sizeX * sizeY;
@@ -107,9 +111,9 @@ void main() {
     ivec3 pos = ivec3(get_grid_position(idx));
 
     int boundary_ind = get_grid_index_boundary(pos+ivec3(1), gridSize + 2);
-    if (b[boundary_ind] == 0) {
-        return;
-    }
+    // if (b[boundary_ind] == 0) {
+    //     return;
+    // }
 
     float vel_x2 = cell_vellX(pos);
     float vel_y2 = cell_vellY(pos);
@@ -125,5 +129,6 @@ void main() {
     imageStore(outputTexture, pos, vec4(density2[idx], density2[idx], density2[idx], 1.0));
 
     int boundary_ind2 = get_grid_index_boundary(pos+ivec3(1), gridSize + 2);
-    imageStore(outputTexture, pos, vec4(b[boundary_ind2], b[boundary_ind2], b[boundary_ind2], 1.0));
+    // imageStore(outputTexture, pos, vec4(b[boundary_ind2], b[boundary_ind2], b[boundary_ind2], 1.0));
+    imageStore(outputTexture, pos, vec4(0.8392, 0.2196, 0.2196, 1.0));
 }

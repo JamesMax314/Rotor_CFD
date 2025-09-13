@@ -98,7 +98,11 @@ public:
     VkImageView _3DTextureView;
     VkDeviceMemory _3DTextureMemory;
 
-    Kernel _cp{};
+    Kernel _gaussSidel{};
+    Kernel _advect{};
+    Kernel _advectSwapped{};
+	Kernel _writeTexture{};
+	Kernel _writeTextureSwapped{};
 	Kernel _rp{};
 
     VkDeviceSize bufferSize = _res * _res * _res * sizeof(float);

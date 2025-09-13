@@ -4,26 +4,38 @@
 
 layout (local_size_x = 32) in;
 
+layout(push_constant) uniform CamData {
+    vec3 camPos;
+    float padding1; // padding to make size multiple of 16 bytes
+    vec3 camLookAt;
+    float padding2; // padding to make size multiple of 16 bytes
+} camData;
+
+int gridSize = 129;//pushConstants.gridSize;
+int shouldRed = 1;
+
 layout(binding = 0) buffer velXBuff { float vel_x[]; };
 layout(binding = 1) buffer velYBuff { float vel_y[]; };
 layout(binding = 2) buffer velZBuff { float vel_z[]; };
-layout(binding = 3) buffer boundariesBuff { float b[]; };
-// layout(binding = 3) buffer densityBuff { float density[]; };
-// layout(binding = 4) buffer pressureBuff { float pressure[]; };
+layout(binding = 3) buffer densityBuff { float density[]; };
+layout(binding = 4) buffer pressureBuff { float pressure[]; };
 
-// layout(binding = 5) buffer velXBuff2 { float vel_x_2[]; };
-// layout(binding = 6) buffer velYBuff2 { float vel_y_2[]; };
-// layout(binding = 7) buffer velZBuff2 { float vel_z_2[]; };
-// layout(binding = 8) buffer density2Buff { float density2[]; };
-// layout(binding = 9) buffer pressure2Buff { float pressure2[]; };
+layout(binding = 5) buffer velXBuff2 { float vel_x2[]; };
+layout(binding = 6) buffer velYBuff2 { float vel_y2[]; };
+layout(binding = 7) buffer velZBuff2 { float vel_z2[]; };
+layout(binding = 8) buffer density2Buff { float density2[]; };
+layout(binding = 9) buffer pressure2Buff { float pressure2[]; };
+layout(binding = 10) buffer boundariesBuff { float b[]; };
 
-layout(push_constant) uniform PushConstants {
-    int gridSize;
-    int shouldRed;
-} pushConstants;
+layout(binding = 11, rgba32f) writeonly uniform image3D outputTexture;
 
-int shouldRed = pushConstants.shouldRed;
-int gridSize = pushConstants.gridSize;
+// layout(push_constant) uniform PushConstants {
+//     int gridSize;
+//     int shouldRed;
+// } pushConstants;
+
+// int shouldRed = pushConstants.shouldRed;
+// int gridSize = pushConstants.gridSize;
 
 // const int gridSize = 129;
 const float dt = 0.1;

@@ -49,19 +49,9 @@ void VulkanEngine::init()
 
 	printf("init sync structures complete\n");
 
-	// init_3D_texture();
-
-	// printf("init 3D texture complete\n");
-
 	initSSBOs();
 
 	printf("init SSBOs complete\n");
-
-    // init_pipelines();
-
-	printf("init pipelines complete\n");
-
-
 
     initKernels();
 
@@ -100,7 +90,6 @@ void VulkanEngine::initSSBOs() {
 	);
 
 
-
 	vkinit::endSingleTimeCommands(_device, _commandPool, _graphicsQueue, cmd);
 
 	vkinit::initMesh(_quadMesh, _device, _commandPool, _graphicsQueue, _allocator, _quadVertices, _quadIndices);
@@ -115,11 +104,31 @@ void VulkanEngine::initKernels() {
     pushConstantRange.size = sizeof(CamData);
 	std::vector<VkPushConstantRange> pushConstants = { pushConstantRange };
 
+	std::vector<ResourceBinding> swappedBindings = _resourceBindings;
+	std::swap(swappedBindings[0], swappedBindings[5]);
+	std::swap(swappedBindings[1], swappedBindings[6]);
+	std::swap(swappedBindings[2], swappedBindings[7]);
+	std::swap(swappedBindings[3], swappedBindings[8]);
+	std::swap(swappedBindings[4], swappedBindings[9]);
 
-    _cp = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/advect.comp.spv" }, _layoutBindings, pushConstants);
-	vkinit::updateKernelDescriptors(_device, _cp, _resourceBindings);
 
-	printf("Compute kernel initialized\n");
+	_gaussSidel = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/gaussSiedel.comp.spv" }, _layoutBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _gaussSidel, _resourceBindings);
+
+    _advect = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/advect.comp.spv" }, _layoutBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _advect, _resourceBindings);
+
+	_advectSwapped = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/advect.comp.spv" }, _layoutBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _advectSwapped, swappedBindings);
+
+	_writeTexture = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/writeTexture.comp.spv" }, _layoutBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _writeTexture, _resourceBindings);
+
+	_writeTextureSwapped = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/writeTexture.comp.spv" }, _layoutBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _writeTextureSwapped, swappedBindings);
+
+
+	printf("Compute kernels initialized\n");
 
 	// If you want to use a subset of the resources and bindings, you can do so like this:
 	std::vector<uint32_t> activeBindings = {11};
@@ -135,18 +144,6 @@ void VulkanEngine::initKernels() {
 
 	printf("Render kernel initialized\n");
 
-
-    // vkinit::updateStorageBuffers(_device, _cp.descriptorSet, _advectBuffers);
-
-    // VkDescriptorImageInfo imageInfo{};
-    // imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-    // imageInfo.imageView = _3DTextureView;
-    // imageInfo.sampler = VK_NULL_HANDLE;
-
-    // VkWriteDescriptorSet descriptorWrite = vkinit::writeDescriptorImage(
-    //     _cp.descriptorSet, 11, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &imageInfo);
-
-    // vkUpdateDescriptorSets(_device, 1, &descriptorWrite, 0, nullptr);
 }
 
 // Simplify
@@ -500,17 +497,11 @@ void VulkanEngine::cleanup()
 
 void VulkanEngine::compute()
 {
-    //wait until the GPU has finished rendering the last frame. Timeout of 1 second
-    VK_CHECK(vkWaitForFences(_device, 1, &_renderFence, true, 1000000000));
+	VK_CHECK(vkWaitForFences(_device, 1, &_renderFence, true, 1000000000));
     VK_CHECK(vkResetFences(_device, 1, &_renderFence));
 
-    //now that we are sure that the commands finished executing, we can safely reset the command buffer to begin recording again.
-    VK_CHECK(vkResetCommandBuffer(_mainCommandBuffer, 0));
-
-    //naming it cmd for shorter writing
-    VkCommandBuffer cmd = _mainCommandBuffer;
-
-    //begin the command buffer recording. We will use this command buffer exactly once, so we want to let Vulkan know that
+	VkCommandBuffer cmd = _mainCommandBuffer;
+	//begin the command buffer recording. We will use this command buffer exactly once, so we want to let Vulkan know that
     VkCommandBufferBeginInfo cmdBeginInfo = {};
     cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cmdBeginInfo.pNext = nullptr;
@@ -518,34 +509,10 @@ void VulkanEngine::compute()
     cmdBeginInfo.pInheritanceInfo = nullptr;
     cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-    VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+	vkBeginCommandBuffer(cmd, &cmdBeginInfo);
 
-    // --- 1. Transition image to GENERAL for compute
-    // VkImageMemoryBarrier barrier{};
-    // barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    // barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    // barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-    // barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    // barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    // barrier.image = _3DTexture;
-    // barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    // barrier.subresourceRange.baseMipLevel = 0;
-    // barrier.subresourceRange.levelCount = 1;
-    // barrier.subresourceRange.baseArrayLayer = 0;
-    // barrier.subresourceRange.layerCount = 1;
-    // barrier.srcAccessMask = 0;
-    // barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-
-    // vkCmdPipelineBarrier(
-    //     cmd,
-    //     VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-    //     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-    //     0,
-    //     0, nullptr,
-    //     0, nullptr,
-    //     1, &barrier
-    // );
-
+	// printf("Command buffer begun\n");
+	// Transition image to GENERAL for compute
 	vkinit::transitionImageLayout(
 		cmd,
 		_resourceBindings[11].image,
@@ -557,43 +524,110 @@ void VulkanEngine::compute()
 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
 	);
 
+	// Bind pipeline + descriptors for Gauss Siedel
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+							_gaussSidel.pipelineLayout, 0, 1, &_gaussSidel.descriptorSet, 0, nullptr);
 
-    // --- 2. Bind compute pipeline and descriptor set
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _cp.pipeline);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                            _cp.pipelineLayout, 0, 1, &_cp.descriptorSet, 0, nullptr);
-
-	CamData data{ {0.0f, 0.0f, -3.0f}, 0.0f, {0.0f, 0.0f, 0.0f}, 0.0f };
-
-	vkCmdPushConstants(
-		cmd,
-		_cp.pipelineLayout,
-		VK_SHADER_STAGE_COMPUTE_BIT,
-		0,                          // offset
-		sizeof(CamData),
-		&data);
-
-    // --- 3. Dispatch compute workgroups
-    int groupSize = 8; // must match local_size_x/y/z in shader
+	// Dispatch kernel A 10 times
+	int groupSize = 8; // must match local_size_x/y/z in shader
     int dispatchX = (_res + groupSize - 1) / groupSize;
     int dispatchY = (_res + groupSize - 1) / groupSize;
     int dispatchZ = (_res + groupSize - 1) / groupSize;
-    vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
+	for (int i = 0; i < 10; i++) {
+		vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
 
-    VK_CHECK(vkEndCommandBuffer(cmd));
+		// Memory barrier between dispatches (so each iteration sees the writes of the last)
+		VkMemoryBarrier barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+		barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			0, 1, &barrier, 0, nullptr, 0, nullptr);
+	}
+
+	// Advect
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+							_advect.pipelineLayout, 0, 1, &_advect.descriptorSet, 0, nullptr);
+	vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
+
+	{
+		VkMemoryBarrier barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+		barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			0, 1, &barrier, 0, nullptr, 0, nullptr);
+	}
 
 
-    //prepare the submission to the queue.
-    VkSubmitInfo submit = {};
-    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit.pNext = nullptr;
+	// Advect Swapped
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+							_advectSwapped.pipelineLayout, 0, 1, &_advectSwapped.descriptorSet, 0, nullptr);
+	vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
 
-    submit.commandBufferCount = 1;
-    submit.pCommandBuffers = &cmd;
+	{
+		VkMemoryBarrier barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+		barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			0, 1, &barrier, 0, nullptr, 0, nullptr);
+	}
 
-    //submit command buffer to the queue and execute it.
-    // _renderFence will now block until the graphic commands finish execution
-    VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, _renderFence));
+
+	// Write to texture
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTexture.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+							_writeTexture.pipelineLayout, 0, 1, &_writeTexture.descriptorSet, 0, nullptr);
+	vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
+
+	{
+		VkMemoryBarrier barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+		barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			0, 1, &barrier, 0, nullptr, 0, nullptr);
+	}
+	
+	// Write to texture Swapped
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+							_writeTextureSwapped.pipelineLayout, 0, 1, &_writeTextureSwapped.descriptorSet, 0, nullptr);
+	vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
+	
+	// {
+	// 	VkMemoryBarrier barrier{};
+	// 	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	// 	barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	// 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+	// 	vkCmdPipelineBarrier(cmd,
+	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	// 		0, 1, &barrier, 0, nullptr, 0, nullptr);
+	// }
+
+	vkEndCommandBuffer(cmd);
+
+	// Submit once
+	VkSubmitInfo submit{};
+	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submit.commandBufferCount = 1;
+	submit.pCommandBuffers = &cmd;
+	vkQueueSubmit(_graphicsQueue, 1, &submit, _renderFence);
+
+	// printf("Compute dispatched\n");
 }
 
 void VulkanEngine::draw()
