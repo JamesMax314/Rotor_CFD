@@ -3,9 +3,6 @@
 #include <SDL.h>
 #include <SDL_vulkan.h>
 
-#include "vk_types.h"
-#include "vk_initializers.h"
-
 void VulkanEngine::init()
 {
     // We initialize SDL and create a window with it. 
@@ -53,7 +50,11 @@ void VulkanEngine::init()
 
 	printf("init SSBOs complete\n");
 
+	init_cfd();
+
     initKernels();
+
+	// load_model();
 
 	//everything went fine
 	_isInitialized = true;
@@ -97,6 +98,11 @@ void VulkanEngine::initSSBOs() {
 	printf("Buffers and textures created\n");
 }
 
+void VulkanEngine::init_cfd()
+{
+	_cfd.init_cfd(_device, _allocator, _res);
+}
+
 void VulkanEngine::initKernels() {
 	VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -132,7 +138,8 @@ void VulkanEngine::initKernels() {
 
 	// If you want to use a subset of the resources and bindings, you can do so like this:
 	std::vector<uint32_t> activeBindings = {11};
-	auto subsetResources = vkinit::subsetVector(_resourceBindings, activeBindings);
+	auto subsetResources = _cfd.get_texture_bindings();
+	// auto subsetResources = vkinit::subsetVector(_resourceBindings, activeBindings);
 	subsetResources[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; // Change type for rendering
 	std::vector<VkDescriptorSetLayoutBinding> subsetLayoutBindings = {{11, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
 
@@ -511,102 +518,49 @@ void VulkanEngine::compute()
 
 	vkBeginCommandBuffer(cmd, &cmdBeginInfo);
 
-	// printf("Command buffer begun\n");
-	// Transition image to GENERAL for compute
-	vkinit::transitionImageLayout(
-		cmd,
-		_resourceBindings[11].image,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_GENERAL,
-		0,
-		VK_ACCESS_SHADER_WRITE_BIT,
-		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
-	);
+	// // printf("Command buffer begun\n");
+	// // Transition image to GENERAL for compute
+	// vkinit::transitionImageLayout(
+	// 	cmd,
+	// 	_resourceBindings[11].image,
+	// 	VK_IMAGE_LAYOUT_UNDEFINED,
+	// 	VK_IMAGE_LAYOUT_GENERAL,
+	// 	0,
+	// 	VK_ACCESS_SHADER_WRITE_BIT,
+	// 	VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+	// 	VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+	// );
 
-	// Bind pipeline + descriptors for Gauss Siedel
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-							_gaussSidel.pipelineLayout, 0, 1, &_gaussSidel.descriptorSet, 0, nullptr);
+	// // Bind pipeline + descriptors for Gauss Siedel
+	// vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipeline);
+	// vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+	// 						_gaussSidel.pipelineLayout, 0, 1, &_gaussSidel.descriptorSet, 0, nullptr);
 
-	// Dispatch kernel A 10 times
-	int groupSize = 8; // must match local_size_x/y/z in shader
-    int dispatchX = (_res + groupSize - 1) / groupSize;
-    int dispatchY = (_res + groupSize - 1) / groupSize;
-    int dispatchZ = (_res + groupSize - 1) / groupSize;
-	for (int i = 0; i < 10; i++) {
-		vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
+	// // Dispatch kernel A 10 times
+	// int groupSize = 8; // must match local_size_x/y/z in shader
+    // int dispatchX = (_res + groupSize - 1) / groupSize;
+    // int dispatchY = (_res + groupSize - 1) / groupSize;
+    // int dispatchZ = (_res + groupSize - 1) / groupSize;
+	// for (int i = 0; i < 10; i++) {
+	// 	vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
 
-		// Memory barrier between dispatches (so each iteration sees the writes of the last)
-		VkMemoryBarrier barrier{};
-		barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-		barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-		vkCmdPipelineBarrier(cmd,
-			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			0, 1, &barrier, 0, nullptr, 0, nullptr);
-	}
+	// 	// Memory barrier between dispatches (so each iteration sees the writes of the last)
+	// 	VkMemoryBarrier barrier{};
+	// 	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	// 	barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	// 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+	// 	vkCmdPipelineBarrier(cmd,
+	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	// 		0, 1, &barrier, 0, nullptr, 0, nullptr);
+	// }
 
-	// Advect
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-							_advect.pipelineLayout, 0, 1, &_advect.descriptorSet, 0, nullptr);
-	vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
+	// // Advect
+	// vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipeline);
+	// vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+	// 						_advect.pipelineLayout, 0, 1, &_advect.descriptorSet, 0, nullptr);
+	// vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
 
-	{
-		VkMemoryBarrier barrier{};
-		barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-		barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-		vkCmdPipelineBarrier(cmd,
-			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			0, 1, &barrier, 0, nullptr, 0, nullptr);
-	}
-
-
-	// Advect Swapped
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-							_advectSwapped.pipelineLayout, 0, 1, &_advectSwapped.descriptorSet, 0, nullptr);
-	vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
-
-	{
-		VkMemoryBarrier barrier{};
-		barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-		barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-		vkCmdPipelineBarrier(cmd,
-			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			0, 1, &barrier, 0, nullptr, 0, nullptr);
-	}
-
-
-	// Write to texture
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTexture.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-							_writeTexture.pipelineLayout, 0, 1, &_writeTexture.descriptorSet, 0, nullptr);
-	vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
-
-	{
-		VkMemoryBarrier barrier{};
-		barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-		barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-		vkCmdPipelineBarrier(cmd,
-			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			0, 1, &barrier, 0, nullptr, 0, nullptr);
-	}
-	
-	// Write to texture Swapped
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-							_writeTextureSwapped.pipelineLayout, 0, 1, &_writeTextureSwapped.descriptorSet, 0, nullptr);
-	vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
-	
 	// {
 	// 	VkMemoryBarrier barrier{};
 	// 	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
@@ -617,6 +571,61 @@ void VulkanEngine::compute()
 	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 	// 		0, 1, &barrier, 0, nullptr, 0, nullptr);
 	// }
+
+
+	// // Advect Swapped
+	// vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipeline);
+	// vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+	// 						_advectSwapped.pipelineLayout, 0, 1, &_advectSwapped.descriptorSet, 0, nullptr);
+	// vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
+
+	// {
+	// 	VkMemoryBarrier barrier{};
+	// 	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	// 	barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	// 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+	// 	vkCmdPipelineBarrier(cmd,
+	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	// 		0, 1, &barrier, 0, nullptr, 0, nullptr);
+	// }
+
+
+	// // Write to texture
+	// vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTexture.pipeline);
+	// vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+	// 						_writeTexture.pipelineLayout, 0, 1, &_writeTexture.descriptorSet, 0, nullptr);
+	// vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
+
+	// {
+	// 	VkMemoryBarrier barrier{};
+	// 	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	// 	barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	// 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+	// 	vkCmdPipelineBarrier(cmd,
+	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	// 		0, 1, &barrier, 0, nullptr, 0, nullptr);
+	// }
+	
+	// // Write to texture Swapped
+	// vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipeline);
+	// vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+	// 						_writeTextureSwapped.pipelineLayout, 0, 1, &_writeTextureSwapped.descriptorSet, 0, nullptr);
+	// vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
+	
+	// // {
+	// // 	VkMemoryBarrier barrier{};
+	// // 	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	// // 	barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	// // 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+	// // 	vkCmdPipelineBarrier(cmd,
+	// // 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	// // 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	// // 		0, 1, &barrier, 0, nullptr, 0, nullptr);
+	// // }
+
+	_cfd.evolve_cfd_cmd(cmd);
 
 	vkEndCommandBuffer(cmd);
 

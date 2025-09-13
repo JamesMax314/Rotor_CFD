@@ -1,0 +1,347 @@
+#include "cfd.h"
+
+std::vector<float> init_velocities(size_t gridsize, float vx, float vy, float vz) {
+    std::vector<float> velocities(gridsize * gridsize * gridsize * 3);
+    for (size_t i = 0; i < velocities.size(); i += 3) {
+        velocities[i] = vx;
+        velocities[i + 1] = vy;
+        velocities[i + 2] = vz;
+    }
+    return velocities;
+}
+
+std::vector<float> init_scalars(size_t gridsize, float base_val) {
+    std::vector<float> scalars(gridsize * gridsize * gridsize);
+    for (size_t i = 0; i < scalars.size(); i += 1) {
+        scalars[i] = base_val;
+    }
+    return scalars;
+}
+
+std::vector<float> init_vels(size_t gridsize, float base_val) {
+    std::vector<float> scalars((gridsize+1) * gridsize * gridsize);
+    for (size_t i = 0; i < scalars.size(); i += 1) {
+        uint x = i % gridsize;
+        uint y = (i / gridsize) % gridsize;
+        uint z = i / (gridsize * gridsize);
+        scalars[i] = base_val;
+        // if (sqrt(pow(x - (gridsize-1)/2, 2) + pow(y - (gridsize-1)/2, 2)) < 10) {
+        //     scalars[i] = 0.0;
+        // }
+    }
+    return scalars;
+}
+
+std::vector<float> init_cylinder(float base_val, int sizeX, int sizeY, int sizeZ, int radius) {
+    std::vector<float> scalars(sizeX * sizeY * sizeZ);
+    for (int i = 0; i < scalars.size(); i += 1) {
+        int x = i % sizeX;
+        int y = (i / sizeX) % sizeY;
+        int z = i / (sizeX * sizeY);
+        if (pow(x - (sizeX-1)/2, 2) + pow(y - (sizeY-1)/2, 2) < radius * radius) {
+            scalars[i] = 0.0;
+        } else {
+            scalars[i] = base_val;
+        }
+    }
+    return scalars;
+}
+
+std::vector<float> init_wall(float base_val, int sizeX, int sizeY, int sizeZ) {
+    std::vector<float> scalars(sizeX * sizeY * sizeZ);
+    for (int i = 0; i < scalars.size(); i += 1) {
+        int x = i % sizeX;
+        int y = (i / sizeX) % sizeY;
+        int z = i / (sizeX * sizeY);
+        if (x == 0 || x == sizeX-1) {
+            scalars[i] = base_val;
+        } else {
+            scalars[i] = 0.0;
+        }
+    }
+    return scalars;
+}
+
+std::vector<float> init_boundaries(int gridSize) {
+    std::vector<float> scalars(gridSize * gridSize * gridSize);
+    for (int i = 0; i < scalars.size(); i += 1) {
+        int x = i % gridSize;
+        int y = (i / gridSize) % gridSize;
+        int z = i / (gridSize * gridSize);
+        if (x % (gridSize) == 0 || y % (gridSize) == 0 || z % (gridSize) == 0) {
+            scalars[i] = 0.0;
+        } else {
+            scalars[i] = 1.0;
+        }
+    }
+    return scalars;
+}
+
+void add_boundary_cylinder(std::vector<float>& boundaries, int rad, int posX, int posY, int gridsize) {
+    for (int i = 0; i < boundaries.size(); i += 1) {
+        int x = i % gridsize;
+        int y = (i / gridsize) % gridsize;
+        int z = i / (gridsize * gridsize);
+
+        if (pow(x-1-posX - (gridsize-1)/2, 2) + pow(y-1-posY - (gridsize-1)/2, 2) < rad*rad) {
+            boundaries[i] = 0.0;
+        }
+    }
+}
+
+// void init_cfd(Cfd& cfd, int gridSize) {
+//     cfd.gridSize = gridSize;
+//     const uint local_work_size = 32;
+
+//     const int bufferSize = gridSize * gridSize * gridSize * sizeof(float);
+//     const int velBufferSize = (gridSize+1) * gridSize * gridSize * sizeof(float);
+//     const int boarderBufferSize = (gridSize+2) * (gridSize+2) * (gridSize+2) * sizeof(float);
+//     const int nThreads = (gridSize * gridSize * gridSize + local_work_size - 1) / local_work_size;
+//     const int nThreadsVel = ((gridSize+1) * gridSize * gridSize + local_work_size - 1) / local_work_size;
+
+
+//     cfd.boundaries = create_compute_buffer(init, boarderBufferSize);
+
+//     cfd.vx = create_compute_buffer(init, velBufferSize);
+//     cfd.vy = create_compute_buffer(init, velBufferSize);
+//     cfd.vz = create_compute_buffer(init, velBufferSize);
+
+//     cfd.vx2 = create_compute_buffer(init, velBufferSize);
+//     cfd.vy2 = create_compute_buffer(init, velBufferSize);
+//     cfd.vz2 = create_compute_buffer(init, velBufferSize);
+
+//     cfd.density = create_compute_buffer(init, bufferSize);
+//     cfd.pressure = create_compute_buffer(init, bufferSize);
+
+//     cfd.density2 = create_compute_buffer(init, bufferSize);
+//     cfd.pressure2 = create_compute_buffer(init, bufferSize);
+
+
+//     cfd.densityTex.x = gridSize;
+//     cfd.densityTex.y = gridSize;
+//     cfd.densityTex.z = gridSize;
+//     create3DTexture(init, cfd.densityTex);
+//     std::vector<texture> textures = {cfd.densityTex};
+
+
+//     PushConstants pushConsts;
+//     pushConsts.gridSize = gridSize;
+
+
+//     std::vector<buffer> buffersGaussSiedel = {cfd.vx, cfd.vy, cfd.vz, cfd.boundaries};
+//     VkShaderModule shaderGaussSiedel = createShaderModule(init, readFile(std::string(SHADER_DIR) + "/gaussSiedel.spv"));
+//     cfd.kernGaussSiedel = gaussSiedelKernel(init, computeHandler, shaderGaussSiedel, buffersGaussSiedel, pushConsts, nThreads);
+
+//     VkShaderModule shaderModule = createShaderModule(init, readFile(std::string(SHADER_DIR) + "/advect.spv"));
+//     std::vector<buffer> buffers = {cfd.vx, cfd.vy, cfd.vz, cfd.density, cfd.pressure, cfd.vx2, cfd.vy2, cfd.vz2, cfd.density2, cfd.pressure2, cfd.boundaries};
+//     std::vector<buffer> buffers2 = {cfd.vx2, cfd.vy2, cfd.vz2, cfd.density2, cfd.pressure2, cfd.vx, cfd.vy, cfd.vz, cfd.density, cfd.pressure, cfd.boundaries};
+//     cfd.kern = build_compute_kernal(init, computeHandler, shaderModule, buffers, textures, pushConsts, nThreadsVel);
+//     cfd.kern2 = build_compute_kernal(init, computeHandler, shaderModule, buffers2, textures, pushConsts, nThreadsVel);
+
+//     VkShaderModule shaderModuleWrtieTex = createShaderModule(init, readFile(std::string(SHADER_DIR) + "/writeTexture.spv"));
+//     std::vector<buffer> buffersWriteTex = {cfd.vx, cfd.vy, cfd.vz, cfd.density, cfd.pressure, cfd.density2, cfd.pressure2, cfd.boundaries};
+//     std::vector<buffer> buffersWriteTex2 = {cfd.vx, cfd.vy, cfd.vz, cfd.density2, cfd.pressure2, cfd.density, cfd.pressure, cfd.boundaries};
+//     cfd.kernWriteTex = build_compute_kernal(init, computeHandler, shaderModuleWrtieTex, buffersWriteTex, textures, pushConsts, nThreads);
+//     cfd.kernWriteTex2 = build_compute_kernal(init, computeHandler, shaderModuleWrtieTex, buffersWriteTex2, textures, pushConsts, nThreads);
+
+//     // Wall of x flow
+//     std::vector<float> vxs = init_wall(2.0f, gridSize+1, gridSize, gridSize);
+//     std::vector<float> vys = init_vels(gridSize, 0.0f);
+//     std::vector<float> vzs = init_vels(gridSize, 0.0f);
+//     std::vector<float> densities = init_scalars(gridSize, 0.0f);
+//     std::vector<float> boundariesVec = init_boundaries(gridSize+2);
+
+//     // Arbitrary Geometry
+//     // add_boundary_cylinder(boundariesVec, 10, 0, 0, gridSize+2);
+//     // add_boundary_cylinder(boundariesVec, 10, -20, -20, gridSize+2);
+
+//     int nStreams = 10;
+//     int streamSize = gridSize / nStreams;
+//     for (int i=0; i<nStreams; i++) {
+//         densities[gridSize*gridSize*(gridSize/2) + gridSize*i*streamSize + 0] = 2.0f;
+//     }
+
+//     for (int i=0; i<gridSize+2; i++)
+//     {
+//         boundariesVec[(gridSize+2)*(gridSize+2)*(gridSize/2+1) + (gridSize+2)*(i) + (0+1)] = 0.0f;
+//     }
+
+//     copy_to_buffer(init, cfd.vx, vxs.data());
+//     copy_to_buffer(init, cfd.vy, vys.data());
+//     copy_to_buffer(init, cfd.vz, vzs.data());
+//     copy_to_buffer(init, cfd.density, densities.data());
+//     copy_to_buffer(init, cfd.boundaries, boundariesVec.data());
+
+//     init.disp.destroyShaderModule(shaderGaussSiedel, nullptr);
+//     init.disp.destroyShaderModule(shaderModule, nullptr);
+//     init.disp.destroyShaderModule(shaderModuleWrtieTex, nullptr);
+// }
+
+void loadTerrain(const std::string& filename, std::vector<float>& terrain, int& sizeX, int& sizeY) {
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error opening file: " << filename << std::endl;
+        return;
+    }
+
+    sizeX = 0;
+    terrain.clear();
+
+    std::string line;
+    while (std::getline(file, line)) {
+        std::istringstream iss(line);
+        float value;
+        sizeY = 0;
+
+        while (iss >> value) {
+            terrain.push_back(value);
+            sizeY += 1;
+        }
+        sizeX += 1;
+    }
+    file.close();
+}
+
+// void load_terrain(Init& init, Cfd& cfd, const std::string& filename) {
+//     int terrainSizeX, terrainSizeY;
+//     std::vector<float> terrain;
+//     loadTerrain(filename, terrain, terrainSizeX, terrainSizeY);
+
+//     std::cout << "Terrain size: " << terrainSizeX << " x " << terrainSizeY << std::endl;
+
+//     int gridSize = cfd.gridSize;
+//     int boundarySize = gridSize + 2;
+//     std::vector<float> boundariesVec = init_boundaries(boundarySize);
+    
+//     float terrainStepX = terrainSizeX / float(gridSize);
+//     float terrainStepY = terrainSizeY / float(gridSize);
+
+//     std::cout << "Terrain step: " << terrainStepX << " x " << terrainStepY << std::endl;
+
+//     for (int i = 0; i < boundariesVec.size(); i += 1) {
+//         int x = i % boundarySize;
+//         int y = (i / boundarySize) % boundarySize;
+//         int z = i / (boundarySize * boundarySize);
+
+//         if (x > 0 && x < gridSize+1 && y > 0 && y < gridSize+1) {
+//             int terrainX = (x-1) * terrainStepX;
+//             int terrainY = (y-1) * terrainStepY;
+    
+//             float terrainHeight = terrain[terrainX + terrainY*terrainSizeX];
+
+//             if (z >= terrainHeight*boundarySize) {
+//                 boundariesVec[i] = 1.0;
+//             } else {
+//                 boundariesVec[i] = 0.0;
+//             }
+//         }
+//     }
+
+//     for (int i=0; i<gridSize+2; i++)
+//     {
+//         boundariesVec[(gridSize+2)*(gridSize+2)*(gridSize/2+1) + (gridSize+2)*(i) + (0+1)] = 0.0f;
+//     }
+
+//     copy_to_buffer(init, cfd.boundaries, boundariesVec.data());
+// }
+
+// void evolve_cfd(Init& init, ComputeHandler& computeHandler, Cfd& cfd) {
+//     for (int i=0; i<10; i++)
+//     {
+//         execute_kernel(init, computeHandler, cfd.kernGaussSiedel);
+//     }
+
+//     execute_kernel(init, computeHandler, cfd.kern);
+//     execute_kernel(init, computeHandler, cfd.kern2);
+
+//     execute_kernel(init, computeHandler, cfd.kernWriteTex);
+//     execute_kernel(init, computeHandler, cfd.kernWriteTex2);
+// }
+
+// void cleanup(Init &init, Cfd &cfd)
+// {
+//     cleanup(init, cfd.kernGaussSiedel);
+//     cleanup(init, cfd.kern);
+//     cleanup(init, cfd.kern2);
+//     cleanup(init, cfd.kernWriteTex);
+//     cleanup(init, cfd.kernWriteTex2);
+
+//     std::vector<buffer> buffers = {cfd.vx, cfd.vy, cfd.vz, cfd.density, cfd.pressure, cfd.vx2, cfd.vy2, cfd.vz2, cfd.density2, cfd.pressure2, cfd.boundaries};
+//     cleanup(init, buffers);
+//     cleanup(init, cfd.densityTex);   
+// }
+
+void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
+{
+    _device = device;
+    _allocator = allocator;
+    _res = res;
+
+    _resourceBindings[11].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	vkinit::createResources(_device, _allocator, _resourceBindings, {_res, _res, _res}, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+	_resourceBindings[11].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; // revert back for compute shader
+
+
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(CamData);
+	std::vector<VkPushConstantRange> pushConstants = { pushConstantRange };
+
+	std::vector<ResourceBinding> swappedBindings = _resourceBindings;
+	std::swap(swappedBindings[0], swappedBindings[5]);
+	std::swap(swappedBindings[1], swappedBindings[6]);
+	std::swap(swappedBindings[2], swappedBindings[7]);
+	std::swap(swappedBindings[3], swappedBindings[8]);
+	std::swap(swappedBindings[4], swappedBindings[9]);
+
+
+	_gaussSidel = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/gaussSiedel.comp.spv" }, _layoutBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _gaussSidel, _resourceBindings);
+
+    _advect = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/advect.comp.spv" }, _layoutBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _advect, _resourceBindings);
+
+	_advectSwapped = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/advect.comp.spv" }, _layoutBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _advectSwapped, swappedBindings);
+
+	_writeTexture = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/writeTexture.comp.spv" }, _layoutBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _writeTexture, _resourceBindings);
+
+	_writeTextureSwapped = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/writeTexture.comp.spv" }, _layoutBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _writeTextureSwapped, swappedBindings);
+}
+
+void Cfd::evolve_cfd_cmd(VkCommandBuffer commandBuffer)
+{
+    for (int i=0; i<10; i++)
+    {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipeline);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipelineLayout, 0, 1, &_gaussSidel.descriptorSet, 0, nullptr);
+
+        vkCmdDispatch(commandBuffer, (_res * _res * _res + 31) / 32, 1, 1);
+    }
+
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipeline);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipelineLayout, 0, 1, &_advect.descriptorSet, 0, nullptr);
+    vkCmdDispatch(commandBuffer, ((_res+1) * _res * _res + 31) / 32, 1, 1);
+
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipeline);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipelineLayout, 0, 1, &_advectSwapped.descriptorSet, 0, nullptr);
+    vkCmdDispatch(commandBuffer, ((_res+1) * _res * _res + 31) / 32, 1, 1);
+
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTexture.pipeline);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTexture.pipelineLayout, 0, 1, &_writeTexture.descriptorSet, 0, nullptr);
+    vkCmdDispatch(commandBuffer, (_res * _res * _res + 31) / 32, 1, 1);
+
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipeline);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipelineLayout, 0, 1, &_writeTextureSwapped.descriptorSet, 0, nullptr);
+    vkCmdDispatch(commandBuffer, (_res * _res * _res + 31) / 32, 1, 1);
+}
+
+std::vector<ResourceBinding> Cfd::get_texture_bindings()
+{
+    std::vector<uint32_t> activeBindings = {11};
+	auto subsetResources = vkinit::subsetVector(_resourceBindings, activeBindings);
+    return subsetResources;
+}

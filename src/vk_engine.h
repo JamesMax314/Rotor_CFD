@@ -7,6 +7,10 @@
 #include "VkBootstrap.h"
 
 #include "vk_types.h"
+#include "vk_helper.h"
+#include "vk_initializers.h"
+
+#include "cfd.h"
 
 //we want to immediately abort when there is an error. In normal engines this would give an error message to the user, or perform a dump of state.
 using namespace std;
@@ -143,6 +147,8 @@ public:
 
 	Mesh _quadMesh;
 
+	Cfd _cfd;
+
 private:
 
 	void init_vulkan();
@@ -156,4 +162,5 @@ private:
     void init_3D_texture();
     void initKernels();
     void initSSBOs();
+	void init_cfd();
 };

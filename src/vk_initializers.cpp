@@ -598,6 +598,7 @@ void vkinit::createResources(
             {
                 throw std::runtime_error("Failed to create buffer resource!");
             }
+
         }
         else if (r.type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
                  r.type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) 
