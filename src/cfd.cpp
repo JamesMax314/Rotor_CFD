@@ -277,9 +277,49 @@ void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
     _allocator = allocator;
     _res = res;
 
-    _resourceBindings[11].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	vkinit::createResources(_device, _allocator, _resourceBindings, {_res, _res, _res}, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
-	_resourceBindings[11].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; // revert back for compute shader
+    const VkDeviceSize bufferSize = _res * _res * _res * sizeof(float);
+    const VkDeviceSize velBufferSize = (_res+1) * _res * _res * sizeof(float);
+    const VkDeviceSize boarderBufferSize = (_res+2) * (_res+2) * (_res+2) * sizeof(float);
+
+    _vx = {0, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    _vy = {1, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    _vz = {2, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+
+    _density = {3, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    _pressure = {4, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+
+    _vx2 = {5, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    _vy2 = {6, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    _vz2 = {7, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+
+    _density2 = {8, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    _pressure2 = {9, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+
+    _boundaries = {10, boarderBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+
+    _densityTex = {11, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE};
+
+    vkinit::createResource(_device, _allocator, _vx);
+    vkinit::createResource(_device, _allocator, _vy);
+    vkinit::createResource(_device, _allocator, _vz);
+    vkinit::createResource(_device, _allocator, _density);
+    vkinit::createResource(_device, _allocator, _pressure);
+    vkinit::createResource(_device, _allocator, _vx2);
+    vkinit::createResource(_device, _allocator, _vy2);
+    vkinit::createResource(_device, _allocator, _vz2);
+    vkinit::createResource(_device, _allocator, _density2);
+    vkinit::createResource(_device, _allocator, _pressure2);
+    vkinit::createResource(_device, _allocator, _boundaries);
+
+    _densityTex.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    vkinit::createResource(_device, _allocator, _densityTex, {_res, _res, _res}, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+	_densityTex.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; // revert back for compute shader
+
+    std::vector<ResourceBinding> resourceBindings = {
+        _vx, _vy, _vz, _density, _pressure,
+        _vx2, _vy2, _vz2, _density2, _pressure2,
+        _boundaries, _densityTex
+    };
 
 
     VkPushConstantRange pushConstantRange{};
@@ -288,60 +328,109 @@ void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
     pushConstantRange.size = sizeof(CamData);
 	std::vector<VkPushConstantRange> pushConstants = { pushConstantRange };
 
-	std::vector<ResourceBinding> swappedBindings = _resourceBindings;
+	std::vector<ResourceBinding> swappedBindings = resourceBindings;
 	std::swap(swappedBindings[0], swappedBindings[5]);
 	std::swap(swappedBindings[1], swappedBindings[6]);
 	std::swap(swappedBindings[2], swappedBindings[7]);
 	std::swap(swappedBindings[3], swappedBindings[8]);
 	std::swap(swappedBindings[4], swappedBindings[9]);
 
+    printf("Creating CFD Kernels...\n");
 
-	_gaussSidel = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/gaussSiedel.comp.spv" }, _layoutBindings, pushConstants);
-	vkinit::updateKernelDescriptors(_device, _gaussSidel, _resourceBindings);
+	_gaussSidel = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/gaussSiedel.comp.spv" }, resourceBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _gaussSidel, resourceBindings);
 
-    _advect = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/advect.comp.spv" }, _layoutBindings, pushConstants);
-	vkinit::updateKernelDescriptors(_device, _advect, _resourceBindings);
+    _advect = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/advect.comp.spv" }, resourceBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _advect, resourceBindings);
 
-	_advectSwapped = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/advect.comp.spv" }, _layoutBindings, pushConstants);
+	_advectSwapped = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/advect.comp.spv" }, swappedBindings, pushConstants);
 	vkinit::updateKernelDescriptors(_device, _advectSwapped, swappedBindings);
 
-	_writeTexture = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/writeTexture.comp.spv" }, _layoutBindings, pushConstants);
-	vkinit::updateKernelDescriptors(_device, _writeTexture, _resourceBindings);
+	_writeTexture = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/writeTexture.comp.spv" }, resourceBindings, pushConstants);
+	vkinit::updateKernelDescriptors(_device, _writeTexture, resourceBindings);
 
-	_writeTextureSwapped = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/writeTexture.comp.spv" }, _layoutBindings, pushConstants);
+	_writeTextureSwapped = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/writeTexture.comp.spv" }, swappedBindings, pushConstants);
 	vkinit::updateKernelDescriptors(_device, _writeTextureSwapped, swappedBindings);
+
+    printf("Initialized CFD with res %d\n", _res);
 }
 
 void Cfd::evolve_cfd_cmd(VkCommandBuffer commandBuffer)
 {
-    for (int i=0; i<10; i++)
-    {
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipeline);
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipelineLayout, 0, 1, &_gaussSidel.descriptorSet, 0, nullptr);
+    const uint local_work_size = 32;
 
-        vkCmdDispatch(commandBuffer, (_res * _res * _res + 31) / 32, 1, 1);
-    }
+    const VkDeviceSize nThreads = (_res * _res * _res + local_work_size - 1) / local_work_size;
+    const VkDeviceSize nThreadsVel = ((_res+1) * _res * _res + local_work_size - 1) / local_work_size;
 
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipeline);
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipelineLayout, 0, 1, &_advect.descriptorSet, 0, nullptr);
-    vkCmdDispatch(commandBuffer, ((_res+1) * _res * _res + 31) / 32, 1, 1);
+    // for (int i=0; i<10; i++)
+    // {
+    //     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipeline);
+    //     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipelineLayout, 0, 1, &_gaussSidel.descriptorSet, 0, nullptr);
 
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipeline);
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipelineLayout, 0, 1, &_advectSwapped.descriptorSet, 0, nullptr);
-    vkCmdDispatch(commandBuffer, ((_res+1) * _res * _res + 31) / 32, 1, 1);
+    //     vkCmdDispatch(commandBuffer, nThreads, 1, 1);
+    // }
+
+    // vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipeline);
+    // vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipelineLayout, 0, 1, &_advect.descriptorSet, 0, nullptr);
+    // vkCmdDispatch(commandBuffer, nThreadsVel, 1, 1);
+
+    // vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipeline);
+    // vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipelineLayout, 0, 1, &_advectSwapped.descriptorSet, 0, nullptr);
+    // vkCmdDispatch(commandBuffer, nThreadsVel, 1, 1);
 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTexture.pipeline);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTexture.pipelineLayout, 0, 1, &_writeTexture.descriptorSet, 0, nullptr);
-    vkCmdDispatch(commandBuffer, (_res * _res * _res + 31) / 32, 1, 1);
+    vkCmdDispatch(commandBuffer, nThreads, 1, 1);
 
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipeline);
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipelineLayout, 0, 1, &_writeTextureSwapped.descriptorSet, 0, nullptr);
-    vkCmdDispatch(commandBuffer, (_res * _res * _res + 31) / 32, 1, 1);
+    // vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipeline);
+    // vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipelineLayout, 0, 1, &_writeTextureSwapped.descriptorSet, 0, nullptr);
+    // vkCmdDispatch(commandBuffer, nThreads, 1, 1);
+
+}
+
+void Cfd::load_default_state(VkCommandPool commandPool, VkQueue queue)
+{
+    std::vector<float> vxs = init_wall(2.0f, _res+1, _res, _res);
+    std::vector<float> vys = init_vels(_res, 0.0f);
+    std::vector<float> vzs = init_vels(_res, 0.0f);
+    std::vector<float> densities = init_scalars(_res, 0.5f);
+    std::vector<float> pressures = init_scalars(_res, 0.0f);
+    std::vector<float> boundariesVec = init_boundaries(_res+2);
+
+    // Arbitrary Geometry
+    // add_boundary_cylinder(boundariesVec, 10, 0, 0, _res+2);
+    // add_boundary_cylinder(boundariesVec, 10, -20, -20, _res+2);
+
+    int nStreams = 10;
+    int streamSize = _res / nStreams;
+    // for (int i=0; i<nStreams; i++) {
+    //     densities[_res*_res*(_res/2) + _res*i*streamSize + 0] = 2.0f;
+    // }
+
+    for (int i=0; i<_res+2; i++)
+    {
+        boundariesVec[(_res+2)*(_res+2)*(_res/2+1) + (_res+2)*(i) + (0+1)] = 0.0f;
+    }
+
+    vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _vx, vxs.data(), vxs.size() * sizeof(float));
+    vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _vy, vys.data(), vys.size() * sizeof(float));
+    vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _vz, vzs.data(), vzs.size() * sizeof(float));
+    vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _density, densities.data(), densities.size() * sizeof(float));
+    vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _pressure, pressures.data(), pressures.size() * sizeof(float));
+    vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _boundaries, boundariesVec.data(), boundariesVec.size() * sizeof(float));
+
+    // Test read back
+    // std::vector<float> testDensity(densities.size());
+    // vkhelp::copy_from_buffer(_device, _allocator, commandPool, queue, _density, testDensity.data(), testDensity.size() * sizeof(float));
+    // for (int i=0; i<10; i++) {
+    //     printf("Density[%d] = %f\n", i, testDensity[i]);
+    // }    
 }
 
 std::vector<ResourceBinding> Cfd::get_texture_bindings()
 {
-    std::vector<uint32_t> activeBindings = {11};
-	auto subsetResources = vkinit::subsetVector(_resourceBindings, activeBindings);
+    // std::vector<uint32_t> activeBindings = {11};
+	// auto subsetResources = vkinit::subsetVector(_resourceBindings, activeBindings);
+    std::vector<ResourceBinding> subsetResources = {_densityTex};
     return subsetResources;
 }

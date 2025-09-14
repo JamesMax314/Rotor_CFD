@@ -111,24 +111,29 @@ void main() {
     ivec3 pos = ivec3(get_grid_position(idx));
 
     int boundary_ind = get_grid_index_boundary(pos+ivec3(1), gridSize + 2);
-    // if (b[boundary_ind] == 0) {
-    //     return;
-    // }
+    if (b[boundary_ind] == 0) {
+        return;
+    }
 
-    float vel_x2 = cell_vellX(pos);
-    float vel_y2 = cell_vellY(pos);
-    float vel_z2 = cell_vellZ(pos);
+    float fvel_x2 = cell_vellX(pos);
+    float fvel_y2 = cell_vellY(pos);
+    float fvel_z2 = cell_vellZ(pos);
 
-    vec3 velocity = vec3(vel_x2, vel_y2, vel_z2);
+    vec3 velocity = vec3(fvel_x2, fvel_y2, fvel_z2);
     vec3 newPos = pos - velocity * dt;
 
     density2[idx] = trilinearInterpolation_density(newPos);
 
+
     // imageStore(outputTexture, pos, vec4(abs(vel_x2), abs(vel_y2), abs(vel_z2), 1.0));
     // imageStore(outputTexture, pos, vec4(vel_y2, -vel_y2, 0, 1.0));
-    imageStore(outputTexture, pos, vec4(density2[idx], density2[idx], density2[idx], 1.0));
+    // imageStore(outputTexture, pos, vec4(density2[idx], density2[idx], density2[idx], 1.0));
+    // imageStore(outputTexture, pos, vec4(fvel_x2, fvel_y2, fvel_z2, 1.0));
+    // imageStore(outputTexture, pos, vec4(density[0], vel_x[0], density2[0], 1.0));
+    imageStore(outputTexture, pos, vec4(density[idx], 1.0, 1.0, 1.0));
+    // imageStore(outputTexture, ivec3(0, 0, 0), vec4(1.0));
 
-    int boundary_ind2 = get_grid_index_boundary(pos+ivec3(1), gridSize + 2);
+    // int boundary_ind2 = get_grid_index_boundary(pos+ivec3(1), gridSize + 2);
     // imageStore(outputTexture, pos, vec4(b[boundary_ind2], b[boundary_ind2], b[boundary_ind2], 1.0));
-    imageStore(outputTexture, pos, vec4(0.8392, 0.2196, 0.2196, 1.0));
+    // imageStore(outputTexture, pos, vec4(0.8392, 0.2196, 0.2196, 1.0));
 }

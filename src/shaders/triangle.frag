@@ -12,5 +12,5 @@ void main()
 {
 	//return color
 	// outFragColor = vec4(inColor,1.0f);
-	outFragColor = texture(volumeTex, vec3(inUV, 0));
+	outFragColor = texture(volumeTex, vec3(inUV, 0.0));
 }

@@ -50,6 +50,16 @@ namespace vkinit {
         const std::vector<VkPushConstantRange>& pushConstants,
         VkRenderPass renderPass = VK_NULL_HANDLE, // only used for graphics
         VkExtent2D _windowExtent = {}); // only used for graphics
+    
+    Kernel initKernel(
+    VkDevice device,
+    KernelType type, 
+    const std::vector<std::string>& shaderPaths, // compute: 1 file, graphics: vert+frag
+    const std::vector<ResourceBinding>& bindings,
+    const std::vector<VkPushConstantRange>& pushConstants,
+    VkRenderPass renderPass = VK_NULL_HANDLE, // only used for graphics
+    VkExtent2D _windowExtent = {} // only needed for graphics pipelines
+    );
 
     void updateKernelDescriptors(VkDevice device, Kernel &kernel, const std::vector<ResourceBinding> &resources);
 
@@ -58,7 +68,11 @@ namespace vkinit {
     VkWriteDescriptorSet writeDescriptorImage(VkDescriptorSet dstSet, uint32_t binding, VkDescriptorType type, const VkDescriptorImageInfo *imageInfo);
     void updateStorageBuffers(VkDevice device, VkDescriptorSet dstSet, const std::vector<BufferBinding> &buffers);
     void createStorageBuffers(VkDevice device, VmaAllocator allocator, std::vector<BufferBinding>& buffers);
-    
+
+    void createResource(VkDevice device, VmaAllocator allocator, ResourceBinding &resource);
+
+    void createResource(VkDevice device, VmaAllocator allocator, ResourceBinding &resource, VkExtent3D defaultImageExtent, VkFormat defaultImageFormat, VkImageUsageFlags imageUsage);
+
     std::vector<VkDescriptorPoolSize> createPoolSizesFromBindings(const std::vector<VkDescriptorSetLayoutBinding> &bindings);
     VkCommandBuffer beginSingleTimeCommands(VkDevice device, VkCommandPool commandPool);
     void endSingleTimeCommands(VkDevice device, VkCommandPool commandPool, VkQueue queue, VkCommandBuffer commandBuffer);

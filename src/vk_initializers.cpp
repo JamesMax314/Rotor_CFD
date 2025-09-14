@@ -401,34 +401,213 @@ Kernel vkinit::initKernel(
     return k;
 }
 
-void vkinit::updateKernelDescriptors(VkDevice device, Kernel& kernel,
-                             const std::vector<ResourceBinding>& resources) {
-    std::vector<VkWriteDescriptorSet> writes;
+Kernel vkinit::initKernel(
+    VkDevice device,
+    KernelType type, 
+    const std::vector<std::string>& shaderPaths, // compute: 1 file, graphics: vert+frag
+    const std::vector<ResourceBinding>& bindings,
+    const std::vector<VkPushConstantRange>& pushConstants,
+    VkRenderPass renderPass, // only used for graphics
+    VkExtent2D _windowExtent // only needed for graphics pipelines
+) {
+    Kernel k{};
+    k.type = type;
+    k.pushConstants = pushConstants;
 
-    for (auto& res : resources) {
-        if (res.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
-            VkDescriptorBufferInfo bufInfo{res.buffer, 0, VK_WHOLE_SIZE};
-            VkWriteDescriptorSet write{};
-            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            write.dstSet = kernel.descriptorSet;
-            write.dstBinding = res.binding;
-            write.descriptorType = res.type;
-            write.descriptorCount = 1;
-            write.pBufferInfo = &bufInfo;
-            writes.push_back(write);
+    // ---- 1. Load shader modules ----
+    std::vector<VkShaderModule> shaderModules;
+    for (auto& path : shaderPaths) {
+        VkShaderModule mod;
+        if (!load_shader_module(device, path.c_str(), &mod)) {
+            throw std::runtime_error("Failed to load shader module: " + path);
+        }
+        shaderModules.push_back(mod);
+    }
+
+    // Initialise VkDescriptorSetLayoutBinding from ResourceBindings
+    std::vector<VkDescriptorSetLayoutBinding> vkBindings;
+    for (auto& b : bindings) {
+        VkDescriptorSetLayoutBinding layoutBinding{};
+        layoutBinding.binding = b.binding;
+        layoutBinding.descriptorType = b.type;
+        layoutBinding.descriptorCount = 1; // we don't support arrays of resources yet
+        layoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT; // TODO: make configurable
+        layoutBinding.pImmutableSamplers = nullptr; // only relevant for image samplers
+        vkBindings.push_back(layoutBinding);
+    }
+
+    // ---- 2. Descriptor set layout ----
+    VkDescriptorSetLayoutCreateInfo setLayoutInfo{};
+    setLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    setLayoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+    setLayoutInfo.pBindings = vkBindings.data();
+
+    VK_CHECK(vkCreateDescriptorSetLayout(device, &setLayoutInfo, nullptr, &k.descriptorSetLayout));
+
+    // ---- 3. Pipeline layout ----
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &k.descriptorSetLayout;
+
+    if (!pushConstants.empty()) {
+        pipelineLayoutInfo.pushConstantRangeCount = static_cast<uint32_t>(pushConstants.size());
+        pipelineLayoutInfo.pPushConstantRanges = pushConstants.data();
+    }
+
+    VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &k.pipelineLayout));
+
+    // ---- 4. Create pipeline ----
+    if (type == KernelType::Compute) {
+        VkComputePipelineCreateInfo computeInfo{};
+        computeInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        computeInfo.layout = k.pipelineLayout;
+        computeInfo.stage = vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_COMPUTE_BIT, shaderModules[0]);
+
+        VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computeInfo, nullptr, &k.pipeline));
+    } else { // Graphics
+        PipelineBuilder builder;
+        builder._pipelineLayout = k.pipelineLayout;
+
+        // Vertex and fragment stages
+        builder._shaderStages.push_back(vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, shaderModules[0]));
+        builder._shaderStages.push_back(vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, shaderModules[1]));
+
+        // Fill in defaults: vertex input, input assembly, viewport/scissor, rasterizer, multisample, blend
+        builder._vertexInputInfo = vkinit::vertex_input_state_create_info();
+        builder._inputAssembly = vkinit::input_assembly_create_info(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+        builder._viewport.x = 0.0f;
+        builder._viewport.y = 0.0f;
+        builder._viewport.width = (float)_windowExtent.width;
+        builder._viewport.height = (float)_windowExtent.height;
+        builder._viewport.minDepth = 0.0f;
+        builder._viewport.maxDepth = 1.0f;
+        builder._scissor.offset = { 0, 0 };
+        builder._scissor.extent = _windowExtent;
+        builder._rasterizer = vkinit::rasterization_state_create_info(VK_POLYGON_MODE_FILL);
+        builder._multisampling = vkinit::multisampling_state_create_info();
+        builder._colorBlendAttachment = vkinit::color_blend_attachment_state();
+
+        VkVertexInputBindingDescription bindingDescription{};
+        bindingDescription.binding = 0;
+        bindingDescription.stride = sizeof(Vertex);
+        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        auto bindingDesc = Vertex::getBindingDescription();
+        auto attrDescs = Vertex::getAttributeDescriptions();
+
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputInfo.vertexBindingDescriptionCount = 1;
+        vertexInputInfo.pVertexBindingDescriptions = &bindingDesc;
+        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attrDescs.size());
+        vertexInputInfo.pVertexAttributeDescriptions = attrDescs.data();
+
+        builder._vertexInputInfo = vertexInputInfo;
+
+
+        k.pipeline = builder.build_pipeline(device, renderPass);
+    }
+
+    // ---- 5. Destroy shader modules (pipeline keeps a reference) ----
+    for (auto mod : shaderModules) vkDestroyShaderModule(device, mod, nullptr);
+
+    // ---- 6. Create descriptor pool ----
+    std::vector<VkDescriptorPoolSize> poolSizes;
+    for (auto& b : bindings) {
+        VkDescriptorPoolSize ps{};
+        ps.type = b.type;
+        ps.descriptorCount = 1;
+        poolSizes.push_back(ps);
+    }
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.maxSets = 1;
+    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+    poolInfo.pPoolSizes = poolSizes.data();
+
+    VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &k.descriptorPool));
+
+    // ---- 7. Allocate descriptor set ----
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = k.descriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &k.descriptorSetLayout;
+
+    VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &k.descriptorSet));
+
+    return k;
+}
+
+void vkinit::updateKernelDescriptors(
+    VkDevice device,
+    Kernel& kernel,
+    const std::vector<ResourceBinding>& resources)
+{
+    // Pre-allocate vectors so their storage won't reallocate while we take pointers into them.
+    std::vector<VkDescriptorBufferInfo> bufferInfos;
+    std::vector<VkDescriptorImageInfo> imageInfos;
+    bufferInfos.reserve(resources.size());
+    imageInfos.reserve(resources.size());
+
+    std::vector<VkWriteDescriptorSet> writes;
+    writes.reserve(resources.size());
+
+    // First: populate the info arrays (stable after reserve)
+    for (auto const &res : resources) {
+        if (res.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
+            res.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) 
+        {
+            // Guard: must have a valid VkBuffer
+            if (res.buffer == VK_NULL_HANDLE) {
+                throw std::runtime_error("updateKernelDescriptors: resource.buffer is VK_NULL_HANDLE for binding " + std::to_string(res.binding));
+            }
+
+            VkDescriptorBufferInfo bi{};
+            bi.buffer = res.buffer;
+            bi.offset = res.offset;                // use res.offset if you support offsets
+            bi.range  = (res.range == 0) ? VK_WHOLE_SIZE : res.range;
+            bufferInfos.push_back(bi);
         } else {
-            VkDescriptorImageInfo imgInfo{res.sampler, res.imageView, res.layout};
-            VkWriteDescriptorSet write{};
-            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            write.dstSet = kernel.descriptorSet;
-            write.dstBinding = res.binding;
-            write.descriptorType = res.type;
-            write.descriptorCount = 1;
-            write.pImageInfo = &imgInfo;
-            writes.push_back(write);
+            // Image
+            if (res.imageView == VK_NULL_HANDLE) {
+                throw std::runtime_error("updateKernelDescriptors: resource.imageView is VK_NULL_HANDLE for binding " + std::to_string(res.binding));
+            }
+            VkDescriptorImageInfo ii{};
+            ii.sampler = res.sampler;
+            ii.imageView = res.imageView;
+            ii.imageLayout = res.layout;
+            imageInfos.push_back(ii);
         }
     }
 
+    // Second: build writes referring to the info vectors. Use indices to match the above order.
+    size_t bufferIdx = 0;
+    size_t imageIdx = 0;
+    for (auto const &res : resources) {
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = kernel.descriptorSet;
+        write.dstBinding = res.binding;
+        write.dstArrayElement = 0;
+        write.descriptorCount = 1;
+        write.descriptorType = res.type;
+
+        if (res.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER || res.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
+            write.pBufferInfo = &bufferInfos[bufferIdx++];
+            write.pImageInfo = nullptr;
+            write.pTexelBufferView = nullptr;
+        } else {
+            write.pImageInfo = &imageInfos[imageIdx++];
+            write.pBufferInfo = nullptr;
+            write.pTexelBufferView = nullptr;
+        }
+        writes.push_back(write);
+    }
+
+    // Finally call the update (all info pointers are valid until this call returns)
     vkUpdateDescriptorSets(device, (uint32_t)writes.size(), writes.data(), 0, nullptr);
 }
 
@@ -569,6 +748,26 @@ void vkinit::createStorageBuffers(VkDevice device, VmaAllocator allocator, std::
     }
 }
 
+void vkinit::createResource(VkDevice device, VmaAllocator allocator, ResourceBinding& resource) {
+    std::vector<ResourceBinding> resources = { resource };
+    createResources(device, allocator, resources);
+    resource = resources[0];
+}
+
+void vkinit::createResource(
+    VkDevice device,
+    VmaAllocator allocator,
+    ResourceBinding& resource,
+    VkExtent3D defaultImageExtent,              // you can pass per-resource extent if needed
+    VkFormat defaultImageFormat,
+    VkImageUsageFlags imageUsage
+) {
+    std::vector<ResourceBinding> resources = { resource };
+    createResources(device, allocator, resources, defaultImageExtent, defaultImageFormat, imageUsage);
+    resource = resources[0];
+}
+
+
 void vkinit::createResources(
     VkDevice device,
     VmaAllocator allocator,
@@ -587,7 +786,7 @@ void vkinit::createResources(
             bufferInfo.size = r.range;  // use range field
             bufferInfo.usage = (r.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
                 ? (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)
-                : VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+                : VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
             VmaAllocationCreateInfo allocInfo{};

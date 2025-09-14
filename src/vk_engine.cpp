@@ -46,11 +46,11 @@ void VulkanEngine::init()
 
 	printf("init sync structures complete\n");
 
+	init_cfd();
+
 	initSSBOs();
 
 	printf("init SSBOs complete\n");
-
-	init_cfd();
 
     initKernels();
 
@@ -63,25 +63,11 @@ void VulkanEngine::init()
 }
 
 void VulkanEngine::initSSBOs() {
-	VmaAllocatorCreateInfo allocatorInfo{};
-	allocatorInfo.physicalDevice = _chosenGPU;  // your VkPhysicalDevice
-	allocatorInfo.device = _device;                  // your VkDevice
-	allocatorInfo.instance = _instance;              // your VkInstance
-	allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_2; // or whatever you're using
-
-	if (vmaCreateAllocator(&allocatorInfo, &_allocator) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create VMA allocator!");
-	}
-
-	_resourceBindings[11].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	vkinit::createResources(_device, _allocator, _resourceBindings, {_res, _res, _res}, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
-	_resourceBindings[11].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; // revert back for compute shader
-
 	VkCommandBuffer cmd = vkinit::beginSingleTimeCommands(_device, _commandPool);
 
 	vkinit::transitionImageLayout(
 		cmd,
-		_resourceBindings[11].image,
+		_cfd.get_texture_bindings().at(0).image,
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_GENERAL,
 		0,    // srcStage (instead of 0)
@@ -100,7 +86,17 @@ void VulkanEngine::initSSBOs() {
 
 void VulkanEngine::init_cfd()
 {
+	VmaAllocatorCreateInfo allocatorInfo{};
+	allocatorInfo.physicalDevice = _chosenGPU;  // your VkPhysicalDevice
+	allocatorInfo.device = _device;                  // your VkDevice
+	allocatorInfo.instance = _instance;              // your VkInstance
+	allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_2; // or whatever you're using
+
+	if (vmaCreateAllocator(&allocatorInfo, &_allocator) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create VMA allocator!");
+	}
 	_cfd.init_cfd(_device, _allocator, _res);
+	_cfd.load_default_state(_commandPool, _graphicsQueue);
 }
 
 void VulkanEngine::initKernels() {
@@ -109,32 +105,6 @@ void VulkanEngine::initKernels() {
     pushConstantRange.offset = 0;
     pushConstantRange.size = sizeof(CamData);
 	std::vector<VkPushConstantRange> pushConstants = { pushConstantRange };
-
-	std::vector<ResourceBinding> swappedBindings = _resourceBindings;
-	std::swap(swappedBindings[0], swappedBindings[5]);
-	std::swap(swappedBindings[1], swappedBindings[6]);
-	std::swap(swappedBindings[2], swappedBindings[7]);
-	std::swap(swappedBindings[3], swappedBindings[8]);
-	std::swap(swappedBindings[4], swappedBindings[9]);
-
-
-	_gaussSidel = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/gaussSiedel.comp.spv" }, _layoutBindings, pushConstants);
-	vkinit::updateKernelDescriptors(_device, _gaussSidel, _resourceBindings);
-
-    _advect = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/advect.comp.spv" }, _layoutBindings, pushConstants);
-	vkinit::updateKernelDescriptors(_device, _advect, _resourceBindings);
-
-	_advectSwapped = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/advect.comp.spv" }, _layoutBindings, pushConstants);
-	vkinit::updateKernelDescriptors(_device, _advectSwapped, swappedBindings);
-
-	_writeTexture = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/writeTexture.comp.spv" }, _layoutBindings, pushConstants);
-	vkinit::updateKernelDescriptors(_device, _writeTexture, _resourceBindings);
-
-	_writeTextureSwapped = vkinit::initKernel(_device, KernelType::Compute, { "build/shaders/writeTexture.comp.spv" }, _layoutBindings, pushConstants);
-	vkinit::updateKernelDescriptors(_device, _writeTextureSwapped, swappedBindings);
-
-
-	printf("Compute kernels initialized\n");
 
 	// If you want to use a subset of the resources and bindings, you can do so like this:
 	std::vector<uint32_t> activeBindings = {11};
@@ -517,113 +487,6 @@ void VulkanEngine::compute()
     cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
 	vkBeginCommandBuffer(cmd, &cmdBeginInfo);
-
-	// // printf("Command buffer begun\n");
-	// // Transition image to GENERAL for compute
-	// vkinit::transitionImageLayout(
-	// 	cmd,
-	// 	_resourceBindings[11].image,
-	// 	VK_IMAGE_LAYOUT_UNDEFINED,
-	// 	VK_IMAGE_LAYOUT_GENERAL,
-	// 	0,
-	// 	VK_ACCESS_SHADER_WRITE_BIT,
-	// 	VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-	// 	VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
-	// );
-
-	// // Bind pipeline + descriptors for Gauss Siedel
-	// vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipeline);
-	// vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-	// 						_gaussSidel.pipelineLayout, 0, 1, &_gaussSidel.descriptorSet, 0, nullptr);
-
-	// // Dispatch kernel A 10 times
-	// int groupSize = 8; // must match local_size_x/y/z in shader
-    // int dispatchX = (_res + groupSize - 1) / groupSize;
-    // int dispatchY = (_res + groupSize - 1) / groupSize;
-    // int dispatchZ = (_res + groupSize - 1) / groupSize;
-	// for (int i = 0; i < 10; i++) {
-	// 	vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
-
-	// 	// Memory barrier between dispatches (so each iteration sees the writes of the last)
-	// 	VkMemoryBarrier barrier{};
-	// 	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-	// 	barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-	// 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-	// 	vkCmdPipelineBarrier(cmd,
-	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-	// 		0, 1, &barrier, 0, nullptr, 0, nullptr);
-	// }
-
-	// // Advect
-	// vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipeline);
-	// vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-	// 						_advect.pipelineLayout, 0, 1, &_advect.descriptorSet, 0, nullptr);
-	// vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
-
-	// {
-	// 	VkMemoryBarrier barrier{};
-	// 	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-	// 	barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-	// 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-	// 	vkCmdPipelineBarrier(cmd,
-	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-	// 		0, 1, &barrier, 0, nullptr, 0, nullptr);
-	// }
-
-
-	// // Advect Swapped
-	// vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipeline);
-	// vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-	// 						_advectSwapped.pipelineLayout, 0, 1, &_advectSwapped.descriptorSet, 0, nullptr);
-	// vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
-
-	// {
-	// 	VkMemoryBarrier barrier{};
-	// 	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-	// 	barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-	// 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-	// 	vkCmdPipelineBarrier(cmd,
-	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-	// 		0, 1, &barrier, 0, nullptr, 0, nullptr);
-	// }
-
-
-	// // Write to texture
-	// vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTexture.pipeline);
-	// vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-	// 						_writeTexture.pipelineLayout, 0, 1, &_writeTexture.descriptorSet, 0, nullptr);
-	// vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
-
-	// {
-	// 	VkMemoryBarrier barrier{};
-	// 	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-	// 	barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-	// 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-	// 	vkCmdPipelineBarrier(cmd,
-	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-	// 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-	// 		0, 1, &barrier, 0, nullptr, 0, nullptr);
-	// }
-	
-	// // Write to texture Swapped
-	// vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipeline);
-	// vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-	// 						_writeTextureSwapped.pipelineLayout, 0, 1, &_writeTextureSwapped.descriptorSet, 0, nullptr);
-	// vkCmdDispatch(cmd, dispatchX*dispatchY*dispatchZ, 1, 1);
-	
-	// // {
-	// // 	VkMemoryBarrier barrier{};
-	// // 	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-	// // 	barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-	// // 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-	// // 	vkCmdPipelineBarrier(cmd,
-	// // 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-	// // 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-	// // 		0, 1, &barrier, 0, nullptr, 0, nullptr);
-	// // }
 
 	_cfd.evolve_cfd_cmd(cmd);
 
