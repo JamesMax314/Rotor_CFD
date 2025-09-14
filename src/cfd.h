@@ -47,7 +47,7 @@ public:
     std::vector<ResourceBinding> get_texture_bindings();
 };
 
-struct PushConstants {
+struct CFDPushConstants {
     int gridSize;
     int shouldRed;
 };

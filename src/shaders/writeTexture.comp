@@ -8,15 +8,13 @@ layout (local_size_x = 32) in;
 const float dt = 0.1;
 const int dim = 3;
 
-layout(push_constant) uniform CamData {
-    vec3 camPos;
-    float padding1; // padding to make size multiple of 16 bytes
-    vec3 camLookAt;
-    float padding2; // padding to make size multiple of 16 bytes
-} camData;
+layout(push_constant) uniform CFDPushConstants {
+    int gridSize;
+    int shouldRed;
+} cfdPushConstants;
 
-int gridSize = 129;//pushConstants.gridSize;
-int shouldRed = 1;
+int shouldRed = cfdPushConstants.shouldRed;
+int gridSize = cfdPushConstants.gridSize;
 
 layout(binding = 0) buffer velXBuff { float vel_x[]; };
 layout(binding = 1) buffer velYBuff { float vel_y[]; };
@@ -132,7 +130,7 @@ void main() {
     // imageStore(outputTexture, pos, vec4(density[0], vel_x[0], density2[0], 1.0));
     // imageStore(outputTexture, pos, vec4(density2[idx], density2[idx], density2[idx], 1.0));
 
-    // imageStore(outputTexture, pos, vec4(density[idx], 1.0, 1.0, 1.0));
+    imageStore(outputTexture, pos, vec4(1.0, 1.0, 1.0, 1.0));
     // imageStore(outputTexture, ivec3(0, 0, 0), vec4(1.0));
 
     // int boundary_ind2 = get_grid_index_boundary(pos+ivec3(1), gridSize + 2);

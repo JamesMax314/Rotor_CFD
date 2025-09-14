@@ -13,15 +13,13 @@ const int dim = 3;
 //     int shouldRed;
 // } pushConstants;
 
-layout(push_constant) uniform CamData {
-    vec3 camPos;
-    float padding1; // padding to make size multiple of 16 bytes
-    vec3 camLookAt;
-    float padding2; // padding to make size multiple of 16 bytes
-} camData;
+layout(push_constant) uniform CFDPushConstants {
+    int gridSize;
+    int shouldRed;
+} cfdPushConstants;
 
-int gridSize = 129;//pushConstants.gridSize;
-int shouldRed = 1;
+int shouldRed = cfdPushConstants.shouldRed;
+int gridSize = cfdPushConstants.gridSize;
 
 layout(binding = 0) buffer velXBuff { float vel_x[]; };
 layout(binding = 1) buffer velYBuff { float vel_y[]; };

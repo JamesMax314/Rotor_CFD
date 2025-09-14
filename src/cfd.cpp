@@ -325,7 +325,7 @@ void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     pushConstantRange.offset = 0;
-    pushConstantRange.size = sizeof(CamData);
+    pushConstantRange.size = sizeof(CFDPushConstants);
 	std::vector<VkPushConstantRange> pushConstants = { pushConstantRange };
 
 	std::vector<ResourceBinding> swappedBindings = resourceBindings;
@@ -364,8 +364,12 @@ void Cfd::evolve_cfd_cmd(VkCommandBuffer commandBuffer)
 
     for (int i=0; i<10; i++)
     {
+        CFDPushConstants pushData;
+        pushData.gridSize = _res;
+        pushData.shouldRed = i % 2;
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipeline);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipelineLayout, 0, 1, &_gaussSidel.descriptorSet, 0, nullptr);
+        vkCmdPushConstants(commandBuffer, _gaussSidel.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(CFDPushConstants), &pushData);
 
         vkCmdDispatch(commandBuffer, nThreads, 1, 1);
     }
@@ -390,7 +394,7 @@ void Cfd::evolve_cfd_cmd(VkCommandBuffer commandBuffer)
 
 void Cfd::load_default_state(VkCommandPool commandPool, VkQueue queue)
 {
-    std::vector<float> vxs = init_wall(2.0f, _res+1, _res, _res);
+    std::vector<float> vxs = init_wall(1.0f, _res+1, _res, _res);
     std::vector<float> vys = init_vels(_res, 0.0f);
     std::vector<float> vzs = init_vels(_res, 0.0f);
     std::vector<float> densities = init_scalars(_res, 0.0f);

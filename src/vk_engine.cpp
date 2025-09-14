@@ -113,7 +113,7 @@ void VulkanEngine::initKernels() {
 	std::vector<VkDescriptorSetLayoutBinding> subsetLayoutBindings = {{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
 
 	_rp = vkinit::initKernel(_device, KernelType::Graphics, 
-		{"build/shaders/triangle.vert.spv", "build/shaders/triangle.frag.spv"}, 
+		{"build/shaders/triangle.vert.spv", "build/shaders/rayTrace.frag.spv"}, 
 		subsetLayoutBindings, pushConstants, _renderPass, _windowExtent);
 	
 	vkinit::updateKernelDescriptors(_device, _rp, subsetResources);
