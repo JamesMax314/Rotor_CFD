@@ -426,14 +426,16 @@ Kernel vkinit::initKernel(
 
     // Initialise VkDescriptorSetLayoutBinding from ResourceBindings
     std::vector<VkDescriptorSetLayoutBinding> vkBindings;
+    uint32_t count = 0;
     for (auto& b : bindings) {
         VkDescriptorSetLayoutBinding layoutBinding{};
-        layoutBinding.binding = b.binding;
+        layoutBinding.binding = count;
         layoutBinding.descriptorType = b.type;
         layoutBinding.descriptorCount = 1; // we don't support arrays of resources yet
         layoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT; // TODO: make configurable
         layoutBinding.pImmutableSamplers = nullptr; // only relevant for image samplers
         vkBindings.push_back(layoutBinding);
+        count++;
     }
 
     // ---- 2. Descriptor set layout ----
@@ -586,11 +588,12 @@ void vkinit::updateKernelDescriptors(
     // Second: build writes referring to the info vectors. Use indices to match the above order.
     size_t bufferIdx = 0;
     size_t imageIdx = 0;
+    uint32_t count = 0;
     for (auto const &res : resources) {
         VkWriteDescriptorSet write{};
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write.dstSet = kernel.descriptorSet;
-        write.dstBinding = res.binding;
+        write.dstBinding = count;
         write.dstArrayElement = 0;
         write.descriptorCount = 1;
         write.descriptorType = res.type;
@@ -605,6 +608,7 @@ void vkinit::updateKernelDescriptors(
             write.pTexelBufferView = nullptr;
         }
         writes.push_back(write);
+        count++;
     }
 
     // Finally call the update (all info pointers are valid until this call returns)

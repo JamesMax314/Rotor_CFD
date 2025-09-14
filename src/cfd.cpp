@@ -362,29 +362,29 @@ void Cfd::evolve_cfd_cmd(VkCommandBuffer commandBuffer)
     const VkDeviceSize nThreads = (_res * _res * _res + local_work_size - 1) / local_work_size;
     const VkDeviceSize nThreadsVel = ((_res+1) * _res * _res + local_work_size - 1) / local_work_size;
 
-    // for (int i=0; i<10; i++)
-    // {
-    //     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipeline);
-    //     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipelineLayout, 0, 1, &_gaussSidel.descriptorSet, 0, nullptr);
+    for (int i=0; i<10; i++)
+    {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipeline);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _gaussSidel.pipelineLayout, 0, 1, &_gaussSidel.descriptorSet, 0, nullptr);
 
-    //     vkCmdDispatch(commandBuffer, nThreads, 1, 1);
-    // }
+        vkCmdDispatch(commandBuffer, nThreads, 1, 1);
+    }
 
-    // vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipeline);
-    // vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipelineLayout, 0, 1, &_advect.descriptorSet, 0, nullptr);
-    // vkCmdDispatch(commandBuffer, nThreadsVel, 1, 1);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipeline);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advect.pipelineLayout, 0, 1, &_advect.descriptorSet, 0, nullptr);
+    vkCmdDispatch(commandBuffer, nThreadsVel, 1, 1);
 
-    // vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipeline);
-    // vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipelineLayout, 0, 1, &_advectSwapped.descriptorSet, 0, nullptr);
-    // vkCmdDispatch(commandBuffer, nThreadsVel, 1, 1);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipeline);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipelineLayout, 0, 1, &_advectSwapped.descriptorSet, 0, nullptr);
+    vkCmdDispatch(commandBuffer, nThreadsVel, 1, 1);
 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTexture.pipeline);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTexture.pipelineLayout, 0, 1, &_writeTexture.descriptorSet, 0, nullptr);
     vkCmdDispatch(commandBuffer, nThreads, 1, 1);
 
-    // vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipeline);
-    // vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipelineLayout, 0, 1, &_writeTextureSwapped.descriptorSet, 0, nullptr);
-    // vkCmdDispatch(commandBuffer, nThreads, 1, 1);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipeline);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipelineLayout, 0, 1, &_writeTextureSwapped.descriptorSet, 0, nullptr);
+    vkCmdDispatch(commandBuffer, nThreads, 1, 1);
 
 }
 
@@ -393,19 +393,19 @@ void Cfd::load_default_state(VkCommandPool commandPool, VkQueue queue)
     std::vector<float> vxs = init_wall(2.0f, _res+1, _res, _res);
     std::vector<float> vys = init_vels(_res, 0.0f);
     std::vector<float> vzs = init_vels(_res, 0.0f);
-    std::vector<float> densities = init_scalars(_res, 0.5f);
+    std::vector<float> densities = init_scalars(_res, 0.0f);
     std::vector<float> pressures = init_scalars(_res, 0.0f);
     std::vector<float> boundariesVec = init_boundaries(_res+2);
 
     // Arbitrary Geometry
-    // add_boundary_cylinder(boundariesVec, 10, 0, 0, _res+2);
-    // add_boundary_cylinder(boundariesVec, 10, -20, -20, _res+2);
+    add_boundary_cylinder(boundariesVec, 10, 0, 0, _res+2);
+    add_boundary_cylinder(boundariesVec, 10, -20, -20, _res+2);
 
     int nStreams = 10;
     int streamSize = _res / nStreams;
-    // for (int i=0; i<nStreams; i++) {
-    //     densities[_res*_res*(_res/2) + _res*i*streamSize + 0] = 2.0f;
-    // }
+    for (int i=0; i<nStreams; i++) {
+        densities[_res*_res*(_res/2) + _res*i*streamSize + 0] = 2.0f;
+    }
 
     for (int i=0; i<_res+2; i++)
     {

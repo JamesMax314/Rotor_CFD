@@ -107,11 +107,10 @@ void VulkanEngine::initKernels() {
 	std::vector<VkPushConstantRange> pushConstants = { pushConstantRange };
 
 	// If you want to use a subset of the resources and bindings, you can do so like this:
-	std::vector<uint32_t> activeBindings = {11};
 	auto subsetResources = _cfd.get_texture_bindings();
 	// auto subsetResources = vkinit::subsetVector(_resourceBindings, activeBindings);
 	subsetResources[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; // Change type for rendering
-	std::vector<VkDescriptorSetLayoutBinding> subsetLayoutBindings = {{11, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
+	std::vector<VkDescriptorSetLayoutBinding> subsetLayoutBindings = {{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
 
 	_rp = vkinit::initKernel(_device, KernelType::Graphics, 
 		{"build/shaders/triangle.vert.spv", "build/shaders/triangle.frag.spv"}, 

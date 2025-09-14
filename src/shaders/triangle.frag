@@ -2,7 +2,7 @@
 
 //shader input
 layout (location = 0) in vec2 inUV;
-layout(set = 0, binding = 11) uniform sampler3D volumeTex;
+layout(set = 0, binding = 0) uniform sampler3D volumeTex;
 
 //output write
 layout (location = 0) out vec4 outFragColor;
