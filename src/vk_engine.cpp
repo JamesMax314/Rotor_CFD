@@ -675,15 +675,18 @@ void VulkanEngine::update_camera(float dt) {
     glm::vec3 horizontalRight = glm::normalize(glm::cross(horizontalFront, worldUp));
 
     // Keyboard movement
+	if (mouseCaptured) {
+	
     const Uint8* keystate = SDL_GetKeyboardState(NULL);
-    if (keystate[SDL_SCANCODE_W]) position += cameraSpeed * horizontalFront;
-    if (keystate[SDL_SCANCODE_S]) position -= cameraSpeed * horizontalFront;
-    if (keystate[SDL_SCANCODE_A]) position -= cameraSpeed * horizontalRight;
-    if (keystate[SDL_SCANCODE_D]) position += cameraSpeed * horizontalRight;
+		if (keystate[SDL_SCANCODE_W]) position += cameraSpeed * horizontalFront;
+		if (keystate[SDL_SCANCODE_S]) position -= cameraSpeed * horizontalFront;
+		if (keystate[SDL_SCANCODE_A]) position -= cameraSpeed * horizontalRight;
+		if (keystate[SDL_SCANCODE_D]) position += cameraSpeed * horizontalRight;
 
-    // Vertical movement
-    if (keystate[SDL_SCANCODE_SPACE])     position -= cameraSpeed * worldUp;
-    if (keystate[SDL_SCANCODE_LSHIFT])    position += cameraSpeed * worldUp;
+		// Vertical movement
+		if (keystate[SDL_SCANCODE_SPACE])     position -= cameraSpeed * worldUp;
+		if (keystate[SDL_SCANCODE_LSHIFT])    position += cameraSpeed * worldUp;
+	}
 
     // Mouse motion
     SDL_Event event;

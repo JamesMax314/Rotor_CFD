@@ -7,6 +7,9 @@ The aim of Rotor CFD is to aid in the identification of sorces aerodynamic rotor
 - A semi stable Eulerian integration scheme has been implemented using the red-black Gauss Seidel method. All simulation steps are performed using Vulkan compute shaders.
 - Volumetric rendering has been implimented within a fragment shader for smoke visualisation.
 
+![Alt text](images/progress.png)
+
+Smoke trails depicting the air flow resulting from an initial pulse in the +x direction.
 
 ### Build instructions
 
