@@ -35,7 +35,7 @@ const float dx = 1.0;
 const float dt = 0.1;
 const int dim = 3;
 // const float overRelaxation = 1.9;
-const float overRelaxation = 1.4;
+const float overRelaxation = 1.6;
 
 vec3 get_grid_position(uint index) {
     uint x = index % gridSize;

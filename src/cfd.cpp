@@ -389,19 +389,24 @@ void Cfd::evolve_cfd_cmd(VkCommandBuffer commandBuffer)
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _advectSwapped.pipelineLayout, 0, 1, &_advectSwapped.descriptorSet, 0, nullptr);
     vkCmdDispatch(commandBuffer, nThreadsVel, 1, 1);
 
+    CFDPushConstants pushData;
+    pushData.gridSize = _res;
+
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTexture.pipeline);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTexture.pipelineLayout, 0, 1, &_writeTexture.descriptorSet, 0, nullptr);
+    vkCmdPushConstants(commandBuffer, _writeTexture.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(CFDPushConstants), &pushData);
     vkCmdDispatch(commandBuffer, nThreads, 1, 1);
 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipeline);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, _writeTextureSwapped.pipelineLayout, 0, 1, &_writeTextureSwapped.descriptorSet, 0, nullptr);
+    vkCmdPushConstants(commandBuffer, _writeTextureSwapped.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(CFDPushConstants), &pushData);
     vkCmdDispatch(commandBuffer, nThreads, 1, 1);
 
 }
 
 void Cfd::load_default_state(VkCommandPool commandPool, VkQueue queue)
 {
-    // std::vector<float> vxs = init_wall(0.10f, _res+1, _res, _res);
+    // std::vector<float> vxs = init_wall(10.0f, _res+1, _res, _res);
     std::vector<float> vxs = init_vels(_res, 0.0f);
     std::vector<float> vys = init_vels(_res, 0.0f);
     std::vector<float> vzs = init_vels(_res, 0.0f);
@@ -415,7 +420,7 @@ void Cfd::load_default_state(VkCommandPool commandPool, VkQueue queue)
     for (int z=0; z<_res-2*boarder; z++) {
         for (int y=0; y<_res-2*boarder; y++) {
             for (int x=0; x<_res/4; x++) {
-                vxs[(_res+1)*_res*(z+boarder) + (_res+1)*(y+boarder) + x] = 10.0f;
+                vxs[(_res+1)*_res*(z+boarder) + (_res+1)*(y+boarder) + x] = 20.0f;
             }
         }
     }
@@ -435,7 +440,7 @@ void Cfd::load_default_state(VkCommandPool commandPool, VkQueue queue)
     // }
 
     // profuce 3d grid of 20x20x20 streams
-    int nStreams3D = 20;
+    int nStreams3D = 10;
     int streamSize3D = _res / nStreams3D;
     for (int i=1; i<nStreams3D-1; i++) {
         for (int j=1; j<nStreams3D-1; j++) {
@@ -446,6 +451,8 @@ void Cfd::load_default_state(VkCommandPool commandPool, VkQueue queue)
         }
     }    
 
+    // densities[_res*_res*_res + _res*_res + _res-1] = 10.0f; // last cell is 0 density
+    // source[_res*_res*_res + _res*_res + _res-1] = 10.0f; // last cell is 0 density
     // for (int i=0; i<_res+2; i++)
     // {
     //     boundariesVec[(_res+2)*(_res+2)*(_res/2+1) + (_res+2)*(i) + (0+1)] = 0.0f;
