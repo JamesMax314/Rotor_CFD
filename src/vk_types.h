@@ -36,8 +36,10 @@ struct BufferBinding {
 struct CamData {
     float pos[3];
     float padding1; // padding to make size multiple of 16 bytes
-    float lookAt[3];
+    float camUp[3];
     float padding2; // padding to make size multiple of 16 bytes
+    float lookAt[3];
+    float padding3; // padding to make size multiple of 16 bytes
 };
 
 struct ResourceBinding {

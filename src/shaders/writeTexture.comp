@@ -21,15 +21,18 @@ layout(binding = 1) buffer velYBuff { float vel_y[]; };
 layout(binding = 2) buffer velZBuff { float vel_z[]; };
 layout(binding = 3) buffer densityBuff { float density[]; };
 layout(binding = 4) buffer pressureBuff { float pressure[]; };
+layout(binding = 5) buffer sourceBuff { float source[]; };
 
-layout(binding = 5) buffer velXBuff2 { float vel_x2[]; };
-layout(binding = 6) buffer velYBuff2 { float vel_y2[]; };
-layout(binding = 7) buffer velZBuff2 { float vel_z2[]; };
-layout(binding = 8) buffer density2Buff { float density2[]; };
-layout(binding = 9) buffer pressure2Buff { float pressure2[]; };
-layout(binding = 10) buffer boundariesBuff { float b[]; };
+layout(binding = 6) buffer velXBuff2 { float vel_x2[]; };
+layout(binding = 7) buffer velYBuff2 { float vel_y2[]; };
+layout(binding = 8) buffer velZBuff2 { float vel_z2[]; };
+layout(binding = 9) buffer density2Buff { float density2[]; };
+layout(binding = 10) buffer pressure2Buff { float pressure2[]; };
+layout(binding = 11) buffer source2Buff { float source2[]; };
 
-layout(binding = 11, rgba32f) writeonly uniform image3D outputTexture;
+layout(binding = 12) buffer boundariesBuff { float b[]; };
+
+layout(binding = 13, rgba32f) writeonly uniform image3D outputTexture;
 
 uint get_grid_ind(ivec3 pos, uint sizeX, uint sizeY, uint sizeZ) {
     return pos.x + pos.y * sizeX + pos.z * sizeX * sizeY;
@@ -120,17 +123,22 @@ void main() {
     vec3 velocity = vec3(fvel_x2, fvel_y2, fvel_z2);
     vec3 newPos = pos - velocity * dt;
 
-    density2[idx] = trilinearInterpolation_density(newPos);
+    // Fix the fog density for source cells
+    if (source[idx] > 0.0) {
+        density2[idx] = 1.0;
+    } else {
+        density2[idx] = trilinearInterpolation_density(newPos);
+    }
 
 
     // imageStore(outputTexture, pos, vec4(abs(vel_x2), abs(vel_y2), abs(vel_z2), 1.0));
-    imageStore(outputTexture, pos, vec4(fvel_x2, -fvel_x2, 0, 1.0));
+    imageStore(outputTexture, pos, vec4(density2[idx], fvel_x2, 0, 1.0));
     // imageStore(outputTexture, pos, vec4(density2[idx], density2[idx], density2[idx], 1.0));
     // imageStore(outputTexture, pos, vec4(fvel_x2, fvel_y2, fvel_z2, 1.0));
     // imageStore(outputTexture, pos, vec4(density[0], vel_x[0], density2[0], 1.0));
     // imageStore(outputTexture, pos, vec4(density2[idx], density2[idx], density2[idx], 1.0));
 
-    imageStore(outputTexture, pos, vec4(1.0, 1.0, 1.0, 1.0));
+    // imageStore(outputTexture, pos, vec4(1.0, 1.0, 1.0, 1.0));
     // imageStore(outputTexture, ivec3(0, 0, 0), vec4(1.0));
 
     // int boundary_ind2 = get_grid_index_boundary(pos+ivec3(1), gridSize + 2);

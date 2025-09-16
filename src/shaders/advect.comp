@@ -26,15 +26,18 @@ layout(binding = 1) buffer velYBuff { float vel_y[]; };
 layout(binding = 2) buffer velZBuff { float vel_z[]; };
 layout(binding = 3) buffer densityBuff { float density[]; };
 layout(binding = 4) buffer pressureBuff { float pressure[]; };
+layout(binding = 5) buffer sourceBuff { float source[]; };
 
-layout(binding = 5) buffer velXBuff2 { float vel_x2[]; };
-layout(binding = 6) buffer velYBuff2 { float vel_y2[]; };
-layout(binding = 7) buffer velZBuff2 { float vel_z2[]; };
-layout(binding = 8) buffer density2Buff { float density2[]; };
-layout(binding = 9) buffer pressure2Buff { float pressure2[]; };
-layout(binding = 10) buffer boundariesBuff { float b[]; };
+layout(binding = 6) buffer velXBuff2 { float vel_x2[]; };
+layout(binding = 7) buffer velYBuff2 { float vel_y2[]; };
+layout(binding = 8) buffer velZBuff2 { float vel_z2[]; };
+layout(binding = 9) buffer density2Buff { float density2[]; };
+layout(binding = 10) buffer pressure2Buff { float pressure2[]; };
+layout(binding = 11) buffer source2Buff { float source2[]; };
 
-layout(binding = 11, rgba32f) writeonly uniform image3D outputTexture;
+layout(binding = 12) buffer boundariesBuff { float b[]; };
+
+layout(binding = 13, rgba32f) writeonly uniform image3D outputTexture;
 
 
 int get_grid_index(ivec3 pos) {

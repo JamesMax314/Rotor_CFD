@@ -99,9 +99,19 @@ void VulkanEngine::init_cfd()
 	_cfd.load_default_state(_commandPool, _graphicsQueue);
 }
 
+void VulkanEngine::init_camera()
+{
+	_camData.pos[0] = -1.0f; _camData.pos[1] = -1.0f; _camData.pos[2] = -1.0f;
+	_camData.camUp[0] = 0.0f; _camData.camUp[1] = 1.0f; _camData.camUp[2] = 0.0f;
+	_camData.lookAt[0] = 0.0f; _camData.lookAt[1] = 0.0f; _camData.lookAt[2] = 0.0f;
+
+	SDL_ShowCursor(SDL_ENABLE);
+	SDL_SetRelativeMouseMode(SDL_FALSE);
+}
+
 void VulkanEngine::initKernels() {
 	VkPushConstantRange pushConstantRange{};
-    pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
     pushConstantRange.size = sizeof(CamData);
 	std::vector<VkPushConstantRange> pushConstants = { pushConstantRange };
@@ -561,6 +571,15 @@ void VulkanEngine::draw()
 		0, nullptr
 	);
 
+	vkCmdPushConstants(
+		cmd,
+		_rp.pipelineLayout,
+		VK_SHADER_STAGE_FRAGMENT_BIT,
+		0,
+		sizeof(CamData),
+		&_camData
+	);
+
 	_quadMesh.draw(cmd);
 
     // vkCmdDraw(cmd, 3, 1, 0, 0);
@@ -624,14 +643,82 @@ void VulkanEngine::run()
 	//main loop
 	while (!bQuit)
 	{
-		//Handle events on queue
-		while (SDL_PollEvent(&e) != 0)
-		{
-			//close the window when user clicks the X button or alt-f4s
-			if (e.type == SDL_QUIT) bQuit = true;
-		}
-
+		update_camera(0.016f); // assuming ~60 FPS, so about 16ms per frame
         compute();
 		draw();
 	}
+}
+
+void VulkanEngine::update_camera(float dt) {
+    static float yaw   = 60.0f;
+    static float pitch = 30.0f;
+
+    const float cameraSpeed = 1.0f * dt;
+    const float sensitivity = 0.1f;
+
+    // Wrap _camData.pos in glm::vec3
+    glm::vec3 position = glm::make_vec3(_camData.pos);
+
+    // Compute front from yaw + pitch
+    glm::vec3 front;
+    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.y = sin(glm::radians(pitch));
+    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front   = glm::normalize(front);
+
+    glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+    glm::vec3 right   = glm::normalize(glm::cross(front, worldUp));
+    glm::vec3 up      = glm::normalize(glm::cross(right, front));
+
+    // Constrain movement direction to horizontal plane (XZ)
+    glm::vec3 horizontalFront = glm::normalize(glm::vec3(front.x, 0.0f, front.z));
+    glm::vec3 horizontalRight = glm::normalize(glm::cross(horizontalFront, worldUp));
+
+    // Keyboard movement
+    const Uint8* keystate = SDL_GetKeyboardState(NULL);
+    if (keystate[SDL_SCANCODE_W]) position += cameraSpeed * horizontalFront;
+    if (keystate[SDL_SCANCODE_S]) position -= cameraSpeed * horizontalFront;
+    if (keystate[SDL_SCANCODE_A]) position -= cameraSpeed * horizontalRight;
+    if (keystate[SDL_SCANCODE_D]) position += cameraSpeed * horizontalRight;
+
+    // Vertical movement
+    if (keystate[SDL_SCANCODE_SPACE])     position -= cameraSpeed * worldUp;
+    if (keystate[SDL_SCANCODE_LSHIFT])    position += cameraSpeed * worldUp;
+
+    // Mouse motion
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_QUIT) {
+            exit(0);
+        }
+        if (event.type == SDL_MOUSEBUTTONDOWN && !mouseCaptured) {
+            // First click → capture the mouse
+            SDL_ShowCursor(SDL_DISABLE);         // hide cursor
+            SDL_SetRelativeMouseMode(SDL_TRUE);  // enable relative mouse
+            mouseCaptured = true;
+        } 
+        else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE && mouseCaptured) {
+            // ESC key → release the mouse
+            SDL_ShowCursor(SDL_ENABLE);          // show cursor
+            SDL_SetRelativeMouseMode(SDL_FALSE); // disable relative mouse
+            mouseCaptured = false;
+        }
+        if (event.type == SDL_MOUSEMOTION && mouseCaptured) {
+            float xoffset = event.motion.xrel * sensitivity;
+            float yoffset = event.motion.yrel * sensitivity; // invert Y
+
+            yaw   += xoffset;
+            pitch += yoffset;
+
+            if (pitch > 89.0f)  pitch = 89.0f;
+            if (pitch < -89.0f) pitch = -89.0f;
+        }
+    }
+
+    // Update CamData
+    glm::vec3 lookAt = position + front;
+
+    memcpy(_camData.pos,    glm::value_ptr(position), sizeof(float) * 3);
+    memcpy(_camData.camUp,  glm::value_ptr(up),       sizeof(float) * 3);
+    memcpy(_camData.lookAt, glm::value_ptr(lookAt),   sizeof(float) * 3);
 }

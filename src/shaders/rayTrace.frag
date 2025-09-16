@@ -7,11 +7,21 @@ layout(set = 0, binding = 0) uniform sampler3D volumeTex;
 // Output
 layout(location = 0) out vec4 outFragColor;
 
+layout(push_constant) uniform CamData {
+    vec3 pos;
+    float _pad1;   // matches padding1
+    vec3 camUp;
+    float _pad2;   // matches padding2
+    vec3 lookAt;
+    float _pad3;   // matches padding3
+} cam;
+
 // Simple parameters
-vec3 cameraPos = vec3(0.5, 0.5, -3.0);      // Camera position in volume space [0,1]
-vec3 cameraDir = vec3(0.0, 0.0, 1.0);      // Camera looking down +Z
-vec3 cameraUp  = vec3(0.0, 1.0, 0.0);      // Up direction
-float fov = radians(45.0);                  // Field of view in radians
+vec3 cameraPos = cam.pos;
+vec3 cameraDir = cam.lookAt - cam.pos;
+vec3 cameraUp  = cam.camUp;
+
+float fov      = radians(45.0);
 float stepSize = 0.01; // Step size along the ray
 
 vec3 computeRayDir(vec3 cameraPos, vec3 cameraDir, vec3 cameraUp, vec2 fragUV, float fov) {

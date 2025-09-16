@@ -53,7 +53,7 @@ std::vector<float> init_wall(float base_val, int sizeX, int sizeY, int sizeZ) {
         int x = i % sizeX;
         int y = (i / sizeX) % sizeY;
         int z = i / (sizeX * sizeY);
-        if (x == 0 || x == sizeX-1) {
+        if (x == 0 || x == sizeX-1 && 0 < y - sizeY/4.0 && y - sizeY/4.0 < sizeY/2.0) {
             scalars[i] = base_val;
         } else {
             scalars[i] = 0.0;
@@ -287,6 +287,7 @@ void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
 
     _density = {3, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
     _pressure = {4, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    _source = {4, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
 
     _vx2 = {5, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
     _vy2 = {6, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
@@ -294,6 +295,7 @@ void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
 
     _density2 = {8, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
     _pressure2 = {9, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    _source2 = {9, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
 
     _boundaries = {10, boarderBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
 
@@ -304,11 +306,15 @@ void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
     vkinit::createResource(_device, _allocator, _vz);
     vkinit::createResource(_device, _allocator, _density);
     vkinit::createResource(_device, _allocator, _pressure);
+    vkinit::createResource(_device, _allocator, _source);
+
     vkinit::createResource(_device, _allocator, _vx2);
     vkinit::createResource(_device, _allocator, _vy2);
     vkinit::createResource(_device, _allocator, _vz2);
     vkinit::createResource(_device, _allocator, _density2);
     vkinit::createResource(_device, _allocator, _pressure2);
+    vkinit::createResource(_device, _allocator, _source2);
+
     vkinit::createResource(_device, _allocator, _boundaries);
 
     _densityTex.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -316,8 +322,8 @@ void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
 	_densityTex.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; // revert back for compute shader
 
     std::vector<ResourceBinding> resourceBindings = {
-        _vx, _vy, _vz, _density, _pressure,
-        _vx2, _vy2, _vz2, _density2, _pressure2,
+        _vx, _vy, _vz, _density, _pressure, _source,
+        _vx2, _vy2, _vz2, _density2, _pressure2, _source2,
         _boundaries, _densityTex
     };
 
@@ -329,11 +335,12 @@ void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
 	std::vector<VkPushConstantRange> pushConstants = { pushConstantRange };
 
 	std::vector<ResourceBinding> swappedBindings = resourceBindings;
-	std::swap(swappedBindings[0], swappedBindings[5]);
-	std::swap(swappedBindings[1], swappedBindings[6]);
-	std::swap(swappedBindings[2], swappedBindings[7]);
-	std::swap(swappedBindings[3], swappedBindings[8]);
-	std::swap(swappedBindings[4], swappedBindings[9]);
+	std::swap(swappedBindings[0], swappedBindings[6]);
+	std::swap(swappedBindings[1], swappedBindings[7]);
+	std::swap(swappedBindings[2], swappedBindings[8]);
+	std::swap(swappedBindings[3], swappedBindings[9]);
+	std::swap(swappedBindings[4], swappedBindings[10]);
+    std::swap(swappedBindings[5], swappedBindings[11]);
 
     printf("Creating CFD Kernels...\n");
 
@@ -362,7 +369,7 @@ void Cfd::evolve_cfd_cmd(VkCommandBuffer commandBuffer)
     const VkDeviceSize nThreads = (_res * _res * _res + local_work_size - 1) / local_work_size;
     const VkDeviceSize nThreadsVel = ((_res+1) * _res * _res + local_work_size - 1) / local_work_size;
 
-    for (int i=0; i<10; i++)
+    for (int i=0; i<20; i++)
     {
         CFDPushConstants pushData;
         pushData.gridSize = _res;
@@ -394,21 +401,36 @@ void Cfd::evolve_cfd_cmd(VkCommandBuffer commandBuffer)
 
 void Cfd::load_default_state(VkCommandPool commandPool, VkQueue queue)
 {
-    std::vector<float> vxs = init_wall(1.0f, _res+1, _res, _res);
+    // std::vector<float> vxs = init_wall(1.0f, _res+1, _res, _res);
+    std::vector<float> vxs = init_vels(_res, 0.0f);
     std::vector<float> vys = init_vels(_res, 0.0f);
     std::vector<float> vzs = init_vels(_res, 0.0f);
     std::vector<float> densities = init_scalars(_res, 0.0f);
     std::vector<float> pressures = init_scalars(_res, 0.0f);
+    std::vector<float> source = init_scalars(_res, 0.0f);
     std::vector<float> boundariesVec = init_boundaries(_res+2);
+
+    // set velocity x to 1 in the first quarter
+    for (int z=0; z<_res; z++) {
+        for (int y=0; y<_res; y++) {
+            for (int x=0; x<_res/4; x++) {
+                vxs[(_res+1)*_res*z + (_res+1)*y + x] = 1.0f;
+            }
+        }
+    }
 
     // Arbitrary Geometry
     add_boundary_cylinder(boundariesVec, 10, 0, 0, _res+2);
-    add_boundary_cylinder(boundariesVec, 10, -20, -20, _res+2);
+    // add_boundary_cylinder(boundariesVec, 10, -20, -20, _res+2);
 
     int nStreams = 10;
     int streamSize = _res / nStreams;
-    for (int i=0; i<nStreams; i++) {
-        densities[_res*_res*(_res/2) + _res*i*streamSize + 0] = 2.0f;
+    for (int i=1; i<nStreams-1; i++) {
+        densities[_res*_res*(_res/2) + _res*i*streamSize + 10] = 10.0f;
+        source[_res*_res*(_res/2) + _res*i*streamSize + 10] = 1.0f;
+
+        densities[_res*_res*(_res/2) + _res*i*streamSize + 80] = 10.0f;
+        source[_res*_res*(_res/2) + _res*i*streamSize + 80] = 1.0f;
     }
 
     for (int i=0; i<_res+2; i++)
@@ -421,6 +443,7 @@ void Cfd::load_default_state(VkCommandPool commandPool, VkQueue queue)
     vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _vz, vzs.data(), vzs.size() * sizeof(float));
     vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _density, densities.data(), densities.size() * sizeof(float));
     vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _pressure, pressures.data(), pressures.size() * sizeof(float));
+    vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _source, source.data(), source.size() * sizeof(float));
     vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _boundaries, boundariesVec.data(), boundariesVec.size() * sizeof(float));
 
     // Test read back

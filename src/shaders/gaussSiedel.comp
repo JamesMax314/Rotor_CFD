@@ -17,15 +17,18 @@ layout(binding = 1) buffer velYBuff { float vel_y[]; };
 layout(binding = 2) buffer velZBuff { float vel_z[]; };
 layout(binding = 3) buffer densityBuff { float density[]; };
 layout(binding = 4) buffer pressureBuff { float pressure[]; };
+layout(binding = 5) buffer sourceBuff { float source[]; };
 
-layout(binding = 5) buffer velXBuff2 { float vel_x2[]; };
-layout(binding = 6) buffer velYBuff2 { float vel_y2[]; };
-layout(binding = 7) buffer velZBuff2 { float vel_z2[]; };
-layout(binding = 8) buffer density2Buff { float density2[]; };
-layout(binding = 9) buffer pressure2Buff { float pressure2[]; };
-layout(binding = 10) buffer boundariesBuff { float b[]; };
+layout(binding = 6) buffer velXBuff2 { float vel_x2[]; };
+layout(binding = 7) buffer velYBuff2 { float vel_y2[]; };
+layout(binding = 8) buffer velZBuff2 { float vel_z2[]; };
+layout(binding = 9) buffer density2Buff { float density2[]; };
+layout(binding = 10) buffer pressure2Buff { float pressure2[]; };
+layout(binding = 11) buffer source2Buff { float source2[]; };
 
-layout(binding = 11, rgba32f) writeonly uniform image3D outputTexture;
+layout(binding = 12) buffer boundariesBuff { float b[]; };
+
+layout(binding = 13, rgba32f) writeonly uniform image3D outputTexture;
 
 // layout(push_constant) uniform PushConstants {
 //     int gridSize;
@@ -36,9 +39,11 @@ layout(binding = 11, rgba32f) writeonly uniform image3D outputTexture;
 // int gridSize = pushConstants.gridSize;
 
 // const int gridSize = 129;
+const float dx = 1.0;
 const float dt = 0.1;
 const int dim = 3;
-const float overRelaxation = 1.9;
+// const float overRelaxation = 1.9;
+const float overRelaxation = 0.8;
 
 vec3 get_grid_position(uint index) {
     uint x = index % gridSize;
@@ -69,10 +74,20 @@ int is_red(uint index) {
     return int(index % 2);
 }
 
+bool is_inside(ivec3 p) {
+    return all(greaterThanEqual(p, ivec3(0))) &&
+           all(lessThan(p, ivec3(gridSize)));
+}
+
+bool is_solid(ivec3 p) {
+    if (!is_inside(p)) return true; // ghost = solid
+    return b[get_grid_index(p)] > 0.5;
+}
+
 void gauss_siedel(uint gridIndex) {
     vec3 pos = get_grid_position(gridIndex);
     ivec3 p = ivec3(floor(pos)); // base grid coord
-    ivec3 p_boundary = p + ivec3(1); // shifted for boundary grid
+    ivec3 p_boundary = p;// + ivec3(1); // shifted for boundary grid
 
     p = clamp(p, 0, gridSize - 1); // just to be safe
     p_boundary = clamp(p_boundary, 1, gridSize); // boundary grid limits
@@ -123,54 +138,6 @@ void gauss_siedel(uint gridIndex) {
 
     // Then your usual Gauss-Seidel update, etc...
 }
-
-
-// void gauss_siedel(uint gridIndex) {
-//     vec3 pos = get_grid_position(gridIndex);
-//     ivec3 p0 = ivec3(floor(pos));
-//     ivec3 p1 = p0 + ivec3(1);
-//     p0 = clamp(p0, 0, gridSize - 1);
-//     p1 = clamp(p1, 0, gridSize - 1);
-
-//     float vx0 = vel_x[get_grid_index(p0)];
-//     float vx1 = vel_x[get_grid_index(ivec3(p1.x, p0.y, p0.z))];
-
-//     float vy0 = vel_y[get_grid_index(p0)];
-//     float vy1 = vel_y[get_grid_index(ivec3(p0.x, p1.y, p0.z))];
-
-//     float vz0 = vel_z[get_grid_index(p0)];
-//     float vz1 = vel_z[get_grid_index(ivec3(p0.x, p0.y, p1.z))];
-
-//     float div = overRelaxation*((vx1 - vx0) + (vy1 - vy0) + (vz1 - vz0));
-
-//     float b100 = b[get_grid_index_boundary(ivec3(p1.x + 1, p1.y, p1.z), gridSize+2)];
-//     float bm100 = b[get_grid_index_boundary(ivec3(p1.x - 1, p1.y, p1.z), gridSize+2)];
-//     float b010 = b[get_grid_index_boundary(ivec3(p1.x, p1.y + 1, p1.z), gridSize+2)];
-//     float bm010 = b[get_grid_index_boundary(ivec3(p1.x, p1.y - 1, p1.z), gridSize+2)];
-//     float b001 = b[get_grid_index_boundary(ivec3(p1.x, p1.y, p1.z + 1), gridSize+2)];
-//     float bm001 = b[get_grid_index_boundary(ivec3(p1.x, p1.y, p1.z - 1), gridSize+2)];
-
-//     float boundCoeff = b100 + bm100 + b010 + bm010 + b001 + bm001;
-//     // boundCoeff = boundCoeff / 6.0f;
-
-//     // vel_x[get_grid_index(p0)] = vx0 + bm100*div/boundCoeff;
-//     // vel_x[get_grid_index(ivec3(p1.x, p0.y, p0.z))] = vx1 - b100*div/boundCoeff;
-
-//     // vel_y[get_grid_index(p0)] = vy0 + bm010*div/boundCoeff;
-//     // vel_y[get_grid_index(ivec3(p0.x, p1.y, p0.z))] = vy1 - b010*div/boundCoeff;
-
-//     // vel_z[get_grid_index(p0)] = vz0 + bm001*div/boundCoeff;
-//     // vel_z[get_grid_index(ivec3(p0.x, p0.y, p1.z))] = vz1 - b001*div/boundCoeff;
-
-//     vel_x[get_grid_index(p0)] = bm100;
-//     vel_x[get_grid_index(ivec3(p1.x, p0.y, p0.z))] = b100;
-
-//     vel_y[get_grid_index(p0)] = bm010;
-//     vel_y[get_grid_index(ivec3(p0.x, p1.y, p0.z))] = b010;
-
-//     vel_z[get_grid_index(p0)] = bm001;
-//     vel_z[get_grid_index(ivec3(p0.x, p0.y, p1.z))] = b001;
-// }
 
 void main() {
     uint idx = gl_GlobalInvocationID.x;

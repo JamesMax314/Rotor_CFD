@@ -3,6 +3,10 @@
 #include <iostream>
 #include <fstream>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 //bootstrap library
 #include "VkBootstrap.h"
 
@@ -149,6 +153,10 @@ public:
 
 	Cfd _cfd;
 
+	CamData _camData;
+
+	bool mouseCaptured = false;
+
 private:
 
 	void init_vulkan();
@@ -163,4 +171,6 @@ private:
     void initKernels();
     void initSSBOs();
 	void init_cfd();
+	void init_camera();
+	void update_camera(float dt);
 };

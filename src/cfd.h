@@ -21,6 +21,7 @@ private:
 
     ResourceBinding _density;
     ResourceBinding _pressure;
+    ResourceBinding _source;
 
     ResourceBinding _vx2;
     ResourceBinding _vy2;
@@ -28,6 +29,7 @@ private:
 
     ResourceBinding _density2; 
     ResourceBinding _pressure2;
+    ResourceBinding _source2;
 
     ResourceBinding _boundaries;
 
