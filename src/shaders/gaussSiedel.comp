@@ -30,20 +30,12 @@ layout(binding = 12) buffer boundariesBuff { float b[]; };
 
 layout(binding = 13, rgba32f) writeonly uniform image3D outputTexture;
 
-// layout(push_constant) uniform PushConstants {
-//     int gridSize;
-//     int shouldRed;
-// } pushConstants;
-
-// int shouldRed = pushConstants.shouldRed;
-// int gridSize = pushConstants.gridSize;
-
 // const int gridSize = 129;
 const float dx = 1.0;
 const float dt = 0.1;
 const int dim = 3;
 // const float overRelaxation = 1.9;
-const float overRelaxation = 0.8;
+const float overRelaxation = 1.4;
 
 vec3 get_grid_position(uint index) {
     uint x = index % gridSize;
@@ -87,7 +79,7 @@ bool is_solid(ivec3 p) {
 void gauss_siedel(uint gridIndex) {
     vec3 pos = get_grid_position(gridIndex);
     ivec3 p = ivec3(floor(pos)); // base grid coord
-    ivec3 p_boundary = p;// + ivec3(1); // shifted for boundary grid
+    ivec3 p_boundary = p + ivec3(1); // shifted for boundary grid
 
     p = clamp(p, 0, gridSize - 1); // just to be safe
     p_boundary = clamp(p_boundary, 1, gridSize); // boundary grid limits
@@ -125,18 +117,6 @@ void gauss_siedel(uint gridIndex) {
 
     vel_z[get_z_vel_index(p)] = vz0 + bm001*div/boundCoeff;
     vel_z[get_z_vel_index(ivec3(p.x, p.y, p.z+1))] = vz1 - b001*div/boundCoeff;
-
-
-    // vel_x[get_x_vel_index(p)] = bm100;
-    // vel_x[get_x_vel_index(ivec3(p.x+1, p.y, p.z))] = b100;
-
-    // vel_y[get_y_vel_index(p)] = bm010;
-    // vel_y[get_y_vel_index(ivec3(p.x, p.y+1, p.z))] = b010;
-
-    // vel_z[get_z_vel_index(p)] = bm001;
-    // vel_z[get_z_vel_index(ivec3(p.x, p.y, p.z+1))] = b001;
-
-    // Then your usual Gauss-Seidel update, etc...
 }
 
 void main() {
@@ -145,20 +125,11 @@ void main() {
         return;
     }
 
-    // if (is_red(idx) && shouldRed == 1) {
-    //     return;
-    // }
-
     if (is_red(idx) == shouldRed) {
         return;
     }
 
     gauss_siedel(idx);
-    // vel_x[idx] = 1.0;
-
-
-    // vel_x[idx] = 1.0;
-    // return;
 
     return;
 }

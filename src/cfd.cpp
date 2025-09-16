@@ -369,7 +369,7 @@ void Cfd::evolve_cfd_cmd(VkCommandBuffer commandBuffer)
     const VkDeviceSize nThreads = (_res * _res * _res + local_work_size - 1) / local_work_size;
     const VkDeviceSize nThreadsVel = ((_res+1) * _res * _res + local_work_size - 1) / local_work_size;
 
-    for (int i=0; i<20; i++)
+    for (int i=0; i<50; i++)
     {
         CFDPushConstants pushData;
         pushData.gridSize = _res;
@@ -401,7 +401,7 @@ void Cfd::evolve_cfd_cmd(VkCommandBuffer commandBuffer)
 
 void Cfd::load_default_state(VkCommandPool commandPool, VkQueue queue)
 {
-    // std::vector<float> vxs = init_wall(1.0f, _res+1, _res, _res);
+    // std::vector<float> vxs = init_wall(0.10f, _res+1, _res, _res);
     std::vector<float> vxs = init_vels(_res, 0.0f);
     std::vector<float> vys = init_vels(_res, 0.0f);
     std::vector<float> vzs = init_vels(_res, 0.0f);
@@ -411,32 +411,45 @@ void Cfd::load_default_state(VkCommandPool commandPool, VkQueue queue)
     std::vector<float> boundariesVec = init_boundaries(_res+2);
 
     // set velocity x to 1 in the first quarter
-    for (int z=0; z<_res; z++) {
-        for (int y=0; y<_res; y++) {
+    int boarder = 40;
+    for (int z=0; z<_res-2*boarder; z++) {
+        for (int y=0; y<_res-2*boarder; y++) {
             for (int x=0; x<_res/4; x++) {
-                vxs[(_res+1)*_res*z + (_res+1)*y + x] = 1.0f;
+                vxs[(_res+1)*_res*(z+boarder) + (_res+1)*(y+boarder) + x] = 10.0f;
             }
         }
     }
 
     // Arbitrary Geometry
-    add_boundary_cylinder(boundariesVec, 10, 0, 0, _res+2);
+    // add_boundary_cylinder(boundariesVec, 10, 0, 0, _res+2);
     // add_boundary_cylinder(boundariesVec, 10, -20, -20, _res+2);
 
-    int nStreams = 10;
-    int streamSize = _res / nStreams;
-    for (int i=1; i<nStreams-1; i++) {
-        densities[_res*_res*(_res/2) + _res*i*streamSize + 10] = 10.0f;
-        source[_res*_res*(_res/2) + _res*i*streamSize + 10] = 1.0f;
+    // int nStreams = 20;
+    // int streamSize = _res / nStreams;
+    // for (int i=1; i<nStreams-1; i++) {
+    //     densities[_res*_res*(_res/2) + _res*i*streamSize + 10] = 10.0f;
+    //     source[_res*_res*(_res/2) + _res*i*streamSize + 10] = 1.0f;
 
-        densities[_res*_res*(_res/2) + _res*i*streamSize + 80] = 10.0f;
-        source[_res*_res*(_res/2) + _res*i*streamSize + 80] = 1.0f;
-    }
+    //     densities[_res*_res*(_res/2) + _res*i*streamSize + 80] = 10.0f;
+    //     source[_res*_res*(_res/2) + _res*i*streamSize + 80] = 1.0f;
+    // }
 
-    for (int i=0; i<_res+2; i++)
-    {
-        boundariesVec[(_res+2)*(_res+2)*(_res/2+1) + (_res+2)*(i) + (0+1)] = 0.0f;
-    }
+    // profuce 3d grid of 20x20x20 streams
+    int nStreams3D = 20;
+    int streamSize3D = _res / nStreams3D;
+    for (int i=1; i<nStreams3D-1; i++) {
+        for (int j=1; j<nStreams3D-1; j++) {
+            for (int k=1; k<nStreams3D-1; k++) {
+                densities[_res*_res*(k*streamSize3D) + _res*i*streamSize3D + j*streamSize3D] = 10.0f;
+                source[_res*_res*(k*streamSize3D) + _res*i*streamSize3D + j*streamSize3D] = 1.0f;
+            }
+        }
+    }    
+
+    // for (int i=0; i<_res+2; i++)
+    // {
+    //     boundariesVec[(_res+2)*(_res+2)*(_res/2+1) + (_res+2)*(i) + (0+1)] = 0.0f;
+    // }
 
     vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _vx, vxs.data(), vxs.size() * sizeof(float));
     vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _vy, vys.data(), vys.size() * sizeof(float));

@@ -24,6 +24,10 @@ vec3 cameraUp  = cam.camUp;
 float fov      = radians(45.0);
 float stepSize = 0.01; // Step size along the ray
 
+float randomStepModifier(vec2 st) {
+    return max(0.5, fract(sin(dot(st, vec2(12.9898, 78.233)) * 43758.5453)))/10.0 + 0.9;
+}
+
 vec3 computeRayDir(vec3 cameraPos, vec3 cameraDir, vec3 cameraUp, vec2 fragUV, float fov) {
     // Compute camera basis
     vec3 forward = normalize(cameraDir);
@@ -44,11 +48,10 @@ vec3 computeRayDir(vec3 cameraPos, vec3 cameraDir, vec3 cameraUp, vec2 fragUV, f
     return rayDir;
 }
 
-// Returns true if the ray intersects the box [0,1]^3, and outputs tNear and tFar
 bool intersectBox(vec3 rayOrigin, vec3 rayDir, out float tNear, out float tFar) {
     vec3 invDir = 1.0 / rayDir;
-    vec3 t0s = -rayOrigin * invDir;       // min bounds = 0
-    vec3 t1s = (vec3(1.0) - rayOrigin) * invDir; // max bounds = 1
+    vec3 t0s = (vec3(0.0) - rayOrigin) * invDir;     // min bounds
+    vec3 t1s = (vec3(1.0) - rayOrigin) * invDir;     // max bounds
 
     vec3 tMin = min(t0s, t1s);
     vec3 tMax = max(t0s, t1s);
@@ -56,7 +59,10 @@ bool intersectBox(vec3 rayOrigin, vec3 rayDir, out float tNear, out float tFar) 
     tNear = max(max(tMin.x, tMin.y), tMin.z);
     tFar  = min(min(tMax.x, tMax.y), tMax.z);
 
-    return tFar >= max(tNear, 0.0);
+    // If ray origin is inside, force tNear = 0
+    if (tNear < 0.0) tNear = 0.0;
+
+    return tFar >= tNear;
 }
 
 // Assume we have a cube from [0,0,0] to [1,1,1] and inUV maps to a face
@@ -72,6 +78,8 @@ void main() {
     vec3 samplePos = cameraPos + rayDir * tNear;
     float t = tNear;
     vec4 accumulatedColor = vec4(0.0);
+    float stepMod = randomStepModifier(inUV + vec2(t, t)); // vary step size a bit
+
 
     while (t < tFar) {
         float density = texture(volumeTex, samplePos).r;
@@ -84,9 +92,10 @@ void main() {
         if (accumulatedColor.a >= 0.95)
             break;
 
-        samplePos += rayDir * stepSize;
+        samplePos += rayDir * stepSize * stepMod;
         t += stepSize;
     }
 
     outFragColor = accumulatedColor;
+    // outFragColor = vec4(jitter*20, 1.0, 1.0, 1.0); // visualize jitter
 }
