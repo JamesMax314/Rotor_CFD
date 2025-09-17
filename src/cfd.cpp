@@ -202,6 +202,48 @@ void loadTerrain(const std::string& filename, std::vector<float>& terrain, int& 
     file.close();
 }
 
+void Cfd::load_terrain(VkCommandPool& commandPool, VkQueue& queue, const std::string& filename, float heightScale) {
+    int terrainSizeX, terrainSizeY;
+    std::vector<float> terrain;
+    loadTerrain(filename, terrain, terrainSizeX, terrainSizeY);
+
+    std::cout << "Terrain size: " << terrainSizeX << " x " << terrainSizeY << std::endl;
+
+    int boundarySize = _res + 2;
+    std::vector<float> boundariesVec = init_boundaries(boundarySize);
+    
+    float terrainStepX = terrainSizeX / float(_res);
+    float terrainStepY = terrainSizeY / float(_res);
+
+    std::cout << "Terrain step: " << terrainStepX << " x " << terrainStepY << std::endl;
+
+    for (int i = 0; i < boundariesVec.size(); i += 1) {
+        int x = i % boundarySize;
+        int y = (i / boundarySize) % boundarySize;
+        int z = i / (boundarySize * boundarySize);
+
+        if (x > 0 && x < _res+1 && z > 0 && z < _res+1) {
+            int terrainX = (x-1) * terrainStepX;
+            int terrainZ = (z-1) * terrainStepY;
+    
+            float terrainHeight = terrain[terrainX + terrainZ*terrainSizeX]*heightScale;
+
+            if (boundarySize - y >= terrainHeight*boundarySize) {
+                boundariesVec[i] = 0.0;
+            } else {
+                boundariesVec[i] = 1.0;
+            }
+        }
+    }
+
+    for (int i=0; i<_res+2; i++)
+    {
+        boundariesVec[(_res+2)*(_res+2)*(_res/2+1) + (_res+2)*(i) + (0+1)] = 0.0f;
+    }
+
+    vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _boundaries, boundariesVec.data(), boundariesVec.size() * sizeof(float));
+}
+
 // void load_terrain(Init& init, Cfd& cfd, const std::string& filename) {
 //     int terrainSizeX, terrainSizeY;
 //     std::vector<float> terrain;
@@ -362,7 +404,7 @@ void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
     printf("Initialized CFD with res %d\n", _res);
 }
 
-void Cfd::evolve_cfd_cmd(VkCommandBuffer commandBuffer)
+void Cfd::evolve_cfd_cmd(VkCommandBuffer& commandBuffer)
 {
     const uint local_work_size = 32;
 
@@ -404,7 +446,7 @@ void Cfd::evolve_cfd_cmd(VkCommandBuffer commandBuffer)
 
 }
 
-void Cfd::load_default_state(VkCommandPool commandPool, VkQueue queue)
+void Cfd::load_default_state(VkCommandPool& commandPool, VkQueue& queue)
 {
     // std::vector<float> vxs = init_wall(10.0f, _res+1, _res, _res);
     std::vector<float> vxs = init_vels(_res, 0.0f);
@@ -464,7 +506,7 @@ void Cfd::load_default_state(VkCommandPool commandPool, VkQueue queue)
     vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _density, densities.data(), densities.size() * sizeof(float));
     vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _pressure, pressures.data(), pressures.size() * sizeof(float));
     vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _source, source.data(), source.size() * sizeof(float));
-    vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _boundaries, boundariesVec.data(), boundariesVec.size() * sizeof(float));
+    // vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _boundaries, boundariesVec.data(), boundariesVec.size() * sizeof(float));
 
     // Test read back
     // std::vector<float> testDensity(densities.size());

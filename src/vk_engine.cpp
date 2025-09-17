@@ -97,6 +97,7 @@ void VulkanEngine::init_cfd()
 	}
 	_cfd.init_cfd(_device, _allocator, _res);
 	_cfd.load_default_state(_commandPool, _graphicsQueue);
+	_cfd.load_terrain(_commandPool, _graphicsQueue, "Data/out_data.txt", 0.2);
 }
 
 void VulkanEngine::init_camera()

@@ -43,9 +43,10 @@ private:
 	Kernel _rp{};
 
 public:
-    void init_cfd(VkDevice& device, VmaAllocator& allocator, int res);
-    void evolve_cfd_cmd(VkCommandBuffer commandBuffer);
-    void load_default_state(VkCommandPool commandPool, VkQueue queue);
+    void load_terrain(VkCommandPool& commandPool, VkQueue& queue, const std::string &filename, float heightScale=1);
+    void init_cfd(VkDevice &device, VmaAllocator &allocator, int res);
+    void evolve_cfd_cmd(VkCommandBuffer& commandBuffer);
+    void load_default_state(VkCommandPool& commandPool, VkQueue& queue);
     std::vector<ResourceBinding> get_texture_bindings();
 };
 
