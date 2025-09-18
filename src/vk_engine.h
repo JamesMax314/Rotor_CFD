@@ -13,6 +13,7 @@
 #include "vk_types.h"
 #include "vk_helper.h"
 #include "vk_initializers.h"
+#include "gen_mesh.hpp"
 
 #include "cfd.h"
 
@@ -112,6 +113,9 @@ public:
 	Kernel _writeTexture{};
 	Kernel _writeTextureSwapped{};
 	Kernel _rp{};
+	Kernel _terrainRender{};
+
+	ResourceBinding _depthImage;
 
     VkDeviceSize bufferSize = _res * _res * _res * sizeof(float);
     std::vector<ResourceBinding> _resourceBindings = {
@@ -155,13 +159,19 @@ public:
 
 	CamData _camData;
 
+	CamMatrices _camMatrices;
+
 	bool mouseCaptured = false;
+
+	Mesh _terrainMesh;
 
 private:
 
 	void init_vulkan();
+	void init_depth_image();
     void init_swapchain();
     void init_commands();
+	void init_allocator();
     void init_default_renderpass();
 	void init_framebuffers();
     void init_sync_structures();
@@ -172,5 +182,7 @@ private:
     void initSSBOs();
 	void init_cfd();
 	void init_camera();
+	void init_terrain_rendering();
+	void load_terrain_model(const std::string& filename);
 	void update_camera(float dt);
 };

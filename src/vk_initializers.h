@@ -71,7 +71,13 @@ namespace vkinit {
 
     void createResource(VkDevice device, VmaAllocator allocator, ResourceBinding &resource);
 
-    void createResource(VkDevice device, VmaAllocator allocator, ResourceBinding &resource, VkExtent3D defaultImageExtent, VkFormat defaultImageFormat, VkImageUsageFlags imageUsage);
+    void createResource(VkDevice device,
+        VmaAllocator allocator,
+        ResourceBinding &resource,
+        VkExtent3D defaultImageExtent,
+        VkFormat defaultImageFormat,
+        VkImageUsageFlags imageUsage,
+        uint imageDim = 3);
 
     std::vector<VkDescriptorPoolSize> createPoolSizesFromBindings(const std::vector<VkDescriptorSetLayoutBinding> &bindings);
     VkCommandBuffer beginSingleTimeCommands(VkDevice device, VkCommandPool commandPool);
@@ -97,7 +103,8 @@ namespace vkinit {
         std::vector<ResourceBinding> &resources,
         VkExtent3D defaultImageExtent = {}, // you can pass per-resource extent if needed
         VkFormat defaultImageFormat = VK_FORMAT_R8G8B8A8_UNORM,
-        VkImageUsageFlags imageUsage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+        VkImageUsageFlags imageUsage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        uint imageDim = 3);
 
     template<typename T>
     std::vector<T> subsetVector(const std::vector<T>& vec, const std::vector<uint32_t>& indices) {

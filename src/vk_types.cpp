@@ -1,5 +1,32 @@
 #include "vk_types.h"
 
+CamMatrices ConvertToMatrices(
+    const CamData& cam,
+    float fovY,
+    float aspect,
+    float nearPlane,
+    float farPlane)
+{
+    glm::vec3 eye(cam.pos[0], cam.pos[1], cam.pos[2]);
+    glm::vec3 center(cam.lookAt[0], cam.lookAt[1], cam.lookAt[2]);
+    glm::vec3 up(cam.camUp[0], cam.camUp[1], cam.camUp[2]);
+
+    glm::mat4 view = glm::lookAt(eye, center, up);
+    // glm::mat4 proj = glm::perspective(fovY, aspect, nearPlane, farPlane);
+    glm::mat4 proj = glm::perspectiveRH_ZO(fovY, aspect, nearPlane, farPlane);
+
+    glm::mat4 model = glm::mat4(1.0f); // Identity matrix for model
+
+    // GLM’s perspective matrix is OpenGL-style (depth range -1..1).  
+    // If using Vulkan/DirectX, apply correction if needed.
+    // For Vulkan:
+    proj[1][1] *= 1.0f;
+
+    CamMatrices result;
+    result.mvp = proj * view * model;
+    return result;
+}
+
 VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {
     //make viewport state from our stored viewport and scissor.
     //at the moment we won't support multiple viewports or scissors
@@ -23,6 +50,14 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {
     colorBlending.attachmentCount = 1;
     colorBlending.pAttachments = &_colorBlendAttachment;
 
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS; // or LESS_OR_EQUAL
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.stencilTestEnable = VK_FALSE;
+
     //build the actual pipeline
 	//we now use all of the info structs we have been writing into into this one to create the pipeline
 	VkGraphicsPipelineCreateInfo pipelineInfo = {};
@@ -37,6 +72,7 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {
 	pipelineInfo.pRasterizationState = &_rasterizer;
 	pipelineInfo.pMultisampleState = &_multisampling;
 	pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDepthStencilState = &depthStencil;
 	pipelineInfo.layout = _pipelineLayout;
 	pipelineInfo.renderPass = pass;
 	pipelineInfo.subpass = 0;

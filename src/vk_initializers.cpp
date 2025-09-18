@@ -764,10 +764,11 @@ void vkinit::createResource(
     ResourceBinding& resource,
     VkExtent3D defaultImageExtent,              // you can pass per-resource extent if needed
     VkFormat defaultImageFormat,
-    VkImageUsageFlags imageUsage
+    VkImageUsageFlags imageUsage,
+    uint imageDim
 ) {
     std::vector<ResourceBinding> resources = { resource };
-    createResources(device, allocator, resources, defaultImageExtent, defaultImageFormat, imageUsage);
+    createResources(device, allocator, resources, defaultImageExtent, defaultImageFormat, imageUsage, imageDim);
     resource = resources[0];
 }
 
@@ -778,11 +779,11 @@ void vkinit::createResources(
     std::vector<ResourceBinding>& resources,
     VkExtent3D defaultImageExtent,              // you can pass per-resource extent if needed
     VkFormat defaultImageFormat,
-    VkImageUsageFlags imageUsage
+    VkImageUsageFlags imageUsage,
+    uint imageDim
 ) {
     for (auto& r : resources) {
-        if (r.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
-            r.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) 
+        if (r.kind == BUFFER) 
         {
             // --- Buffer creation ---
             VkBufferCreateInfo bufferInfo{};
@@ -803,13 +804,12 @@ void vkinit::createResources(
             }
 
         }
-        else if (r.type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
-                 r.type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) 
+        else if (r.kind == COLOR_IMAGE) 
         {
             // --- Image creation ---
             VkImageCreateInfo imageInfo{};
             imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-            imageInfo.imageType = VK_IMAGE_TYPE_3D;  // assume volume texture, change if needed
+            imageInfo.imageType = (imageDim == 3 ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D);  // assume volume texture, change if needed
             imageInfo.format = defaultImageFormat;
             imageInfo.extent = defaultImageExtent;
             imageInfo.mipLevels = 1;
@@ -833,7 +833,7 @@ void vkinit::createResources(
             VkImageViewCreateInfo viewInfo{};
             viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             viewInfo.image = r.image;
-            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_3D;
+            viewInfo.viewType = (imageDim == 3 ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D);
             viewInfo.format = defaultImageFormat;
             viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             viewInfo.subresourceRange.baseMipLevel = 0;
@@ -865,6 +865,46 @@ void vkinit::createResources(
 
             // Record layout
             r.layout = VK_IMAGE_LAYOUT_GENERAL;
+        }
+        else if (r.kind == DEPTH_IMAGE) {
+            VkFormat depthFormat = VK_FORMAT_D32_SFLOAT; // or pick dynamically
+            VkImageCreateInfo imageInfo{};
+            imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+            imageInfo.imageType = VK_IMAGE_TYPE_2D;
+            imageInfo.format = depthFormat;
+            imageInfo.extent = defaultImageExtent;
+            imageInfo.mipLevels = 1;
+            imageInfo.arrayLayers = 1;
+            imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+            imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+            imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+            VmaAllocationCreateInfo allocInfo{};
+            allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+            if (vmaCreateImage(allocator, &imageInfo, &allocInfo,
+                            &r.image, &r.imageAllocation, nullptr) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to create depth image!");
+            }
+
+            VkImageViewCreateInfo viewInfo{};
+            viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            viewInfo.image = r.image;
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            viewInfo.format = depthFormat;
+            viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            viewInfo.subresourceRange.baseMipLevel = 0;
+            viewInfo.subresourceRange.levelCount = 1;
+            viewInfo.subresourceRange.baseArrayLayer = 0;
+            viewInfo.subresourceRange.layerCount = 1;
+
+            if (vkCreateImageView(device, &viewInfo, nullptr, &r.imageView) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to create depth image view!");
+            }
+
+            r.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         }
         else {
             throw std::runtime_error("Unsupported resource type in createResources");

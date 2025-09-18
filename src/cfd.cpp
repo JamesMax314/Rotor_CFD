@@ -229,9 +229,9 @@ void Cfd::load_terrain(VkCommandPool& commandPool, VkQueue& queue, const std::st
             float terrainHeight = terrain[terrainX + terrainZ*terrainSizeX]*heightScale;
 
             if (boundarySize - y >= terrainHeight*boundarySize) {
-                boundariesVec[i] = 0.0;
-            } else {
                 boundariesVec[i] = 1.0;
+            } else {
+                boundariesVec[i] = 0.0;
             }
         }
     }
@@ -323,25 +323,25 @@ void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
     const VkDeviceSize velBufferSize = (_res+1) * _res * _res * sizeof(float);
     const VkDeviceSize boarderBufferSize = (_res+2) * (_res+2) * (_res+2) * sizeof(float);
 
-    _vx = {0, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
-    _vy = {1, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
-    _vz = {2, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    _vx = {0, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _vy = {1, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _vz = {2, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
 
-    _density = {3, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
-    _pressure = {4, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
-    _source = {4, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    _density = {3, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _pressure = {4, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _source = {4, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
 
-    _vx2 = {5, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
-    _vy2 = {6, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
-    _vz2 = {7, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    _vx2 = {5, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _vy2 = {6, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _vz2 = {7, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
 
-    _density2 = {8, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
-    _pressure2 = {9, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
-    _source2 = {9, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    _density2 = {8, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _pressure2 = {9, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _source2 = {9, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
 
-    _boundaries = {10, boarderBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+    _boundaries = {10, boarderBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
 
-    _densityTex = {11, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE};
+    _densityTex = {11, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, COLOR_IMAGE};
 
     vkinit::createResource(_device, _allocator, _vx);
     vkinit::createResource(_device, _allocator, _vy);

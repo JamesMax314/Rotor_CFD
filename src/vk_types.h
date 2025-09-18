@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 struct KernelOld {
     VkPipeline pipeline{};
@@ -42,10 +43,29 @@ struct CamData {
     float padding3; // padding to make size multiple of 16 bytes
 };
 
+struct CamMatrices {
+    glm::mat4 mvp;
+};
+
+CamMatrices ConvertToMatrices(
+    const CamData& cam,
+    float fovY = glm::radians(60.0f),
+    float aspect = 1.0f,
+    float nearPlane = 0.1f,
+    float farPlane = 1000.0f);
+
+enum ResourceKind {
+    BUFFER,
+    COLOR_IMAGE,
+    DEPTH_IMAGE
+};
+
 struct ResourceBinding {
     uint32_t binding;                   // Binding index in the shader
     VkDeviceSize range = VK_WHOLE_SIZE; // For buffers, size of the buffer; for images, ignored
     VkDescriptorType type;              // e.g. STORAGE_BUFFER, COMBINED_IMAGE_SAMPLER, STORAGE_IMAGE
+
+    ResourceKind kind;
 
     // Buffer info (if this is a buffer descriptor)
     VkBuffer buffer = VK_NULL_HANDLE;

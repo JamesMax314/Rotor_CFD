@@ -34,9 +34,17 @@ void VulkanEngine::init()
 
 	printf("init commands complete\n");
 
+	init_allocator();
+
+	printf("init allocator complete\n");
+
     init_default_renderpass();
 
 	printf("init default renderpass complete\n");
+
+	init_depth_image();
+
+	printf("init depth image \n");
 
 	init_framebuffers();
 
@@ -48,11 +56,17 @@ void VulkanEngine::init()
 
 	init_cfd();
 
+	printf("init CFD complete \n");
+
 	initSSBOs();
 
 	printf("init SSBOs complete\n");
 
     initKernels();
+
+	init_terrain_rendering();
+
+	load_terrain_model("Data/out_data.txt");
 
 	// load_model();
 
@@ -86,18 +100,8 @@ void VulkanEngine::initSSBOs() {
 
 void VulkanEngine::init_cfd()
 {
-	VmaAllocatorCreateInfo allocatorInfo{};
-	allocatorInfo.physicalDevice = _chosenGPU;  // your VkPhysicalDevice
-	allocatorInfo.device = _device;                  // your VkDevice
-	allocatorInfo.instance = _instance;              // your VkInstance
-	allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_2; // or whatever you're using
-
-	if (vmaCreateAllocator(&allocatorInfo, &_allocator) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create VMA allocator!");
-	}
 	_cfd.init_cfd(_device, _allocator, _res);
 	_cfd.load_default_state(_commandPool, _graphicsQueue);
-	_cfd.load_terrain(_commandPool, _graphicsQueue, "Data/out_data.txt", 0.2);
 }
 
 void VulkanEngine::init_camera()
@@ -129,7 +133,7 @@ void VulkanEngine::initKernels() {
 	
 	vkinit::updateKernelDescriptors(_device, _rp, subsetResources);
 
-	printf("Render kernel initialized\n");
+	printf("Ray trace kernel initialized\n");
 
 }
 
@@ -292,33 +296,38 @@ void VulkanEngine::init_sync_structures()
 
 void VulkanEngine::init_framebuffers()
 {
-	//create the framebuffers for the swapchain images. This will connect the render-pass to the images for rendering
-	VkFramebufferCreateInfo fb_info = {};
-	fb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-	fb_info.pNext = nullptr;
+    // Grab how many images we have in the swapchain
+    const uint32_t swapchain_imagecount = _swapchainImages.size();
+    _framebuffers.resize(swapchain_imagecount);
 
-	fb_info.renderPass = _renderPass;
-	fb_info.attachmentCount = 1;
-	fb_info.width = _windowExtent.width;
-	fb_info.height = _windowExtent.height;
-	fb_info.layers = 1;
+    for (uint32_t i = 0; i < swapchain_imagecount; i++) {
+        // Two attachments: color (swapchain) + depth
+        std::array<VkImageView, 2> attachments = {
+            _swapchainImageViews[i],   // Color
+            _depthImage.imageView      // Depth (same for all framebuffers)
+        };
 
-	//grab how many images we have in the swapchain
-	const uint32_t swapchain_imagecount = _swapchainImages.size();
-	_framebuffers = std::vector<VkFramebuffer>(swapchain_imagecount);
+        VkFramebufferCreateInfo fb_info{};
+        fb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fb_info.pNext = nullptr;
+        fb_info.renderPass = _renderPass;
+        fb_info.attachmentCount = static_cast<uint32_t>(attachments.size());
+        fb_info.pAttachments = attachments.data();
+        fb_info.width = _windowExtent.width;
+        fb_info.height = _windowExtent.height;
+        fb_info.layers = 1;
 
-	//create framebuffers for each of the swapchain image views
-	for (int i = 0; i < swapchain_imagecount; i++) {
+        VK_CHECK(vkCreateFramebuffer(_device, &fb_info, nullptr, &_framebuffers[i]));
+    }
 
-		fb_info.pAttachments = &_swapchainImageViews[i];
-		VK_CHECK(vkCreateFramebuffer(_device, &fb_info, nullptr, &_framebuffers[i]));
-
-        _mainDeletionQueue.push_function([=]() {
-			vkDestroyFramebuffer(_device, _framebuffers[i], nullptr);
-			vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
-    	});
-	}
+    // Cleanup for all framebuffers
+    _mainDeletionQueue.push_function([=]() {
+        for (auto fb : _framebuffers) {
+            vkDestroyFramebuffer(_device, fb, nullptr);
+        }
+    });
 }
+
 
 void VulkanEngine::init_default_renderpass()
 {
@@ -342,26 +351,52 @@ void VulkanEngine::init_default_renderpass()
 	//after the renderpass ends, the image has to be on a layout ready for display
 	color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-    	VkAttachmentReference color_attachment_ref = {};
+	VkAttachmentReference color_attachment_ref = {};
 	//attachment number will index into the pAttachments array in the parent renderpass itself
 	color_attachment_ref.attachment = 0;
 	color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	    // --- Depth attachment ---
+    VkAttachmentDescription depth_attachment{};
+    depth_attachment.format = VK_FORMAT_D32_SFLOAT; // must match the format of your depth image
+    depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;   // clear depth at start of frame
+    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // we don’t need depth after render
+    depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference depth_attachment_ref{};
+    depth_attachment_ref.attachment = 1;
+    depth_attachment_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
 	//we are going to create 1 subpass, which is the minimum you can do
 	VkSubpassDescription subpass = {};
 	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subpass.colorAttachmentCount = 1;
 	subpass.pColorAttachments = &color_attachment_ref;
+	subpass.pDepthStencilAttachment = &depth_attachment_ref;
 
-    	VkRenderPassCreateInfo render_pass_info = {};
-	render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	// --- Dependencies ---
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
-	//connect the color attachment to the info
-	render_pass_info.attachmentCount = 1;
-	render_pass_info.pAttachments = &color_attachment;
-	//connect the subpass to the info
-	render_pass_info.subpassCount = 1;
-	render_pass_info.pSubpasses = &subpass;
+	std::array<VkAttachmentDescription, 2> attachments = { color_attachment, depth_attachment };
+
+    VkRenderPassCreateInfo render_pass_info{};
+    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    render_pass_info.attachmentCount = static_cast<uint32_t>(attachments.size());
+    render_pass_info.pAttachments = attachments.data();
+    render_pass_info.subpassCount = 1;
+    render_pass_info.pSubpasses = &subpass;
+    render_pass_info.dependencyCount = 1;
+    render_pass_info.pDependencies = &dependency;
 
 
 	VK_CHECK(vkCreateRenderPass(_device, &render_pass_info, nullptr, &_renderPass));
@@ -384,13 +419,6 @@ void VulkanEngine::init_swapchain()
 		.value();
 
 	//store swapchain and its related images
-	_swapchain = vkbSwapchain.swapchain;
-	_swapchainImages = vkbSwapchain.get_images().value();
-	_swapchainImageViews = vkbSwapchain.get_image_views().value();
-
-	_swapchainImageFormat = vkbSwapchain.image_format;
-
-    //store swapchain and its related images
 	_swapchain = vkbSwapchain.swapchain;
 	_swapchainImages = vkbSwapchain.get_images().value();
 	_swapchainImageViews = vkbSwapchain.get_image_views().value();
@@ -447,6 +475,44 @@ void VulkanEngine::init_vulkan()
 	_graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
 }
 
+void VulkanEngine::init_depth_image()
+{
+ 	_depthImage = {1, bufferSize, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, DEPTH_IMAGE};
+
+    vkinit::createResource(_device, _allocator, _depthImage, {_windowExtent.width, _windowExtent.height, 1}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 2);
+
+	VkCommandBuffer cmd = vkinit::beginSingleTimeCommands(_device, _commandPool);
+
+	VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = _depthImage.image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | 
+                            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+    vkCmdPipelineBarrier(
+        cmd,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,  // srcStage
+        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, // dstStage
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
+
+	vkinit::endSingleTimeCommands(_device, _commandPool, _graphicsQueue, cmd);
+}
+
 void VulkanEngine::init_commands()
 {
     //create a command pool for commands submitted to the graphics queue.
@@ -463,6 +529,19 @@ void VulkanEngine::init_commands()
 	_mainDeletionQueue.push_function([=]() {
 		vkDestroyCommandPool(_device, _commandPool, nullptr);
 	});
+}
+
+void VulkanEngine::init_allocator()
+{
+	VmaAllocatorCreateInfo allocatorInfo{};
+	allocatorInfo.physicalDevice = _chosenGPU;  // your VkPhysicalDevice
+	allocatorInfo.device = _device;                  // your VkDevice
+	allocatorInfo.instance = _instance;              // your VkInstance
+	allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_2; // or whatever you're using
+
+	if (vmaCreateAllocator(&allocatorInfo, &_allocator) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create VMA allocator!");
+	}
 }
 
 void VulkanEngine::cleanup()
@@ -539,9 +618,10 @@ void VulkanEngine::draw()
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
     //make a clear-color from frame number. This will flash with a 120*pi frame period.
-	VkClearValue clearValue;
+	VkClearValue clearValue[2];
 	float flash = abs(sin(_frameNumber / 120.f));
-	clearValue.color = { { 0.0f, 0.0f, flash, 1.0f } };
+	clearValue[0].color = { { 0.0f, 0.0f, flash, 1.0f } };
+	clearValue[1].depthStencil = {1.0f, 0};
 
 	//start the main renderpass.
 	//We will use the clear color from above, and the framebuffer of the index the swapchain gave us
@@ -556,32 +636,64 @@ void VulkanEngine::draw()
 	rpInfo.framebuffer = _framebuffers[swapchainImageIndex];
 
 	//connect clear values
-	rpInfo.clearValueCount = 1;
-	rpInfo.pClearValues = &clearValue;
+	rpInfo.clearValueCount = 2;
+	rpInfo.pClearValues = clearValue;
+
+	// vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    // vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _rp.pipeline);
+
+	// vkCmdBindDescriptorSets(
+	// 	cmd,
+	// 	VK_PIPELINE_BIND_POINT_GRAPHICS,
+	// 	_rp.pipelineLayout,
+	// 	0, // first set
+	// 	1, &_rp.descriptorSet,
+	// 	0, nullptr
+	// );
+
+	// vkCmdPushConstants(
+	// 	cmd,
+	// 	_rp.pipelineLayout,
+	// 	VK_SHADER_STAGE_FRAGMENT_BIT,
+	// 	0,
+	// 	sizeof(CamData),
+	// 	&_camData
+	// );
+
+	// _quadMesh.draw(cmd);
+
+    // // vkCmdDraw(cmd, 3, 1, 0, 0);
+
+    // //finalize the render pass
+	// vkCmdEndRenderPass(cmd);
+	// //finalize the command buffer (we can no longer add commands, but it can now be executed)
+	// VK_CHECK(vkEndCommandBuffer(cmd));
+
 
 	vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _rp.pipeline);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _terrainRender.pipeline);
 
 	vkCmdBindDescriptorSets(
 		cmd,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
-		_rp.pipelineLayout,
+		_terrainRender.pipelineLayout,
 		0, // first set
-		1, &_rp.descriptorSet,
+		1, &_terrainRender.descriptorSet,
 		0, nullptr
 	);
 
 	vkCmdPushConstants(
 		cmd,
-		_rp.pipelineLayout,
-		VK_SHADER_STAGE_FRAGMENT_BIT,
+		_terrainRender.pipelineLayout,
+		VK_SHADER_STAGE_VERTEX_BIT,
 		0,
-		sizeof(CamData),
-		&_camData
+		sizeof(CamMatrices),
+		&_camMatrices
 	);
 
-	_quadMesh.draw(cmd);
+	_terrainMesh.draw(cmd);
 
     // vkCmdDraw(cmd, 3, 1, 0, 0);
 
@@ -725,4 +837,39 @@ void VulkanEngine::update_camera(float dt) {
     memcpy(_camData.pos,    glm::value_ptr(position), sizeof(float) * 3);
     memcpy(_camData.camUp,  glm::value_ptr(up),       sizeof(float) * 3);
     memcpy(_camData.lookAt, glm::value_ptr(lookAt),   sizeof(float) * 3);
+
+	_camMatrices = ConvertToMatrices(_camData);
+}
+
+void VulkanEngine::init_terrain_rendering()
+{
+
+	VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(CamMatrices);
+	std::vector<VkPushConstantRange> pushConstants = { pushConstantRange };
+
+	// If you want to use a subset of the resources and bindings, you can do so like this:
+	std::vector<VkDescriptorSetLayoutBinding> layoutBindings = {};
+
+	_terrainRender = vkinit::initKernel(_device, KernelType::Graphics, 
+		{"build/shaders/model.vert.spv", "build/shaders/model.frag.spv"}, 
+		layoutBindings, pushConstants, _renderPass, _windowExtent);
+	
+	printf("Render kernel initialized\n");
+}
+
+void VulkanEngine::load_terrain_model(const std::string &filename)
+{
+	float terrainScale = 0.7;
+	_cfd.load_terrain(_commandPool, _graphicsQueue, filename.c_str(), terrainScale);
+
+	std::vector<Vertex> vertices;
+	std::vector<uint16_t> indices;
+	MeshGen::generateMesh(vertices, indices, filename, _res, terrainScale);
+
+	_terrainMesh.init(_device, _commandPool, _graphicsQueue, _allocator, vertices, indices);
+
+	printf("Terrain Loaded \n");
 }
