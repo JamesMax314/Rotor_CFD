@@ -41,14 +41,40 @@ VkPipelineShaderStageCreateInfo vkinit::pipeline_shader_stage_create_info(VkShad
 }
 
 VkPipelineVertexInputStateCreateInfo vkinit::vertex_input_state_create_info() {
-    VkPipelineVertexInputStateCreateInfo info = {};
-    info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    info.pNext = nullptr;
+    // VkPipelineVertexInputStateCreateInfo info = {};
+    // info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    // info.pNext = nullptr;
 
-    //no vertex bindings or attributes
-    info.vertexBindingDescriptionCount = 0;
-    info.vertexAttributeDescriptionCount = 0;
-    return info;
+    // //no vertex bindings or attributes
+    // info.vertexBindingDescriptionCount = 0;
+    // info.vertexAttributeDescriptionCount = 0;
+
+    VkVertexInputBindingDescription bindingDesc{};
+    bindingDesc.binding = 0;
+    bindingDesc.stride = sizeof(Vertex);
+    bindingDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    std::array<VkVertexInputAttributeDescription, 2> attributeDescs{};
+
+    attributeDescs[0].binding = 0;
+    attributeDescs[0].location = 0; // matches `layout(location=0)` in vertex shader
+    attributeDescs[0].format = VK_FORMAT_R32G32B32_SFLOAT; // vec3 position
+    attributeDescs[0].offset = offsetof(Vertex, pos);
+
+    attributeDescs[1].binding = 0;
+    attributeDescs[1].location = 1; // matches `layout(location=1)` in vertex shader
+    attributeDescs[1].format = VK_FORMAT_R32G32_SFLOAT; // vec2 uv
+    attributeDescs[1].offset = offsetof(Vertex, uv);
+
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.pVertexBindingDescriptions = &bindingDesc;
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescs.size());
+    vertexInputInfo.pVertexAttributeDescriptions = attributeDescs.data();
+
+
+    return vertexInputInfo;
 }
 
 VkPipelineInputAssemblyStateCreateInfo vkinit::input_assembly_create_info(VkPrimitiveTopology topology) {
@@ -58,7 +84,7 @@ VkPipelineInputAssemblyStateCreateInfo vkinit::input_assembly_create_info(VkPrim
 
     info.topology = topology;
     //we are not going to use primitive restart on the entire tutorial so leave it on false
-    info.primitiveRestartEnable = VK_TRUE;
+    info.primitiveRestartEnable = VK_FALSE;
     return info;
 }
 
@@ -335,7 +361,7 @@ Kernel vkinit::initKernel(
 
         // Fill in defaults: vertex input, input assembly, viewport/scissor, rasterizer, multisample, blend
         builder._vertexInputInfo = vkinit::vertex_input_state_create_info();
-        builder._inputAssembly = vkinit::input_assembly_create_info(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+        builder._inputAssembly = vkinit::input_assembly_create_info(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
         builder._viewport.x = 0.0f;
         builder._viewport.y = 0.0f;
         builder._viewport.width = (float)_windowExtent.width;
@@ -1009,14 +1035,14 @@ void vkinit::transitionImageLayout(
     );
 }
 
-void vkinit::initMesh(Mesh &mesh, VkDevice device, VkCommandPool commandPool, VkQueue queue, VmaAllocator allocator, const std::vector<Vertex> &vertices, const std::vector<uint16_t> &indices)
+void vkinit::initMesh(Mesh &mesh, VkDevice device, VkCommandPool commandPool, VkQueue queue, VmaAllocator allocator, const std::vector<Vertex> &vertices, const std::vector<uint32_t> &indices)
 {
     mesh.init(device, commandPool, queue, allocator, vertices, indices);
 }
 
 void Mesh::init(VkDevice device, VkCommandPool commandPool, VkQueue queue, VmaAllocator allocator,
               const std::vector<Vertex>& vertices,
-              const std::vector<uint16_t>& indices){
+              const std::vector<uint32_t>& indices){
 
     this->device = device;
     this->commandPool = commandPool;
@@ -1064,13 +1090,13 @@ void Mesh::draw(VkCommandBuffer cmd) const {
     VkBuffer vertexBuffers[] = { vertexBuffer };
     VkDeviceSize offsets[] = { 0 };
     vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
-    vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
     vkCmdDrawIndexed(cmd, indexCount, 1, 0, 0, 0);
 }
 
 void Mesh::upload(VmaAllocator allocator,
             const std::vector<Vertex>& vertices,
-            const std::vector<uint16_t>& indices) {
+            const std::vector<uint32_t>& indices) {
     indexCount = static_cast<uint32_t>(indices.size());
 
     // --- Vertex buffer ---
@@ -1088,7 +1114,7 @@ void Mesh::upload(VmaAllocator allocator,
     // --- Index buffer ---
     VkBufferCreateInfo ibInfo{};
     ibInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    ibInfo.size = sizeof(uint16_t) * indices.size();
+    ibInfo.size = sizeof(uint32_t) * indices.size();
     ibInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
     VK_CHECK(vmaCreateBuffer(allocator, &ibInfo, &vmaAllocInfo,

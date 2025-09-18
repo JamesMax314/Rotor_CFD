@@ -118,31 +118,6 @@ public:
 	ResourceBinding _depthImage;
 
     VkDeviceSize bufferSize = _res * _res * _res * sizeof(float);
-    std::vector<ResourceBinding> _resourceBindings = {
-        {0, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}, {1, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-		{2, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}, {3, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-		{4, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}, {5, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-		{6, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}, {7, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-		{8, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}, {9, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-        {10, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}, {11, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}
-    };
-
-	std::vector<VkDescriptorSetLayoutBinding> _layoutBindings = {
-        // Storage buffers (read/write)
-        {0,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velX
-        {1,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velY
-        {2,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velZ
-        {3,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // density
-        {4,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // pressure
-        {5,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velX2
-        {6,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velY2
-        {7,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // velZ2
-        {8,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // density2
-        {9,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // pressure2
-        {10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // boundaries
-        // Storage image (writeonly)
-        {11, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}, // outputTexture
-    };
 
 	std::vector<Vertex> _quadVertices = {
 		{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}}, // bottom left
@@ -151,7 +126,7 @@ public:
 		{{-1.0f,  1.0f, 0.0f}, {0.0f, 1.0f}}, // top left
 	};
 
-	std::vector<uint16_t> _quadIndices = { 0, 1, 2, 2, 3, 0 };
+	std::vector<uint32_t> _quadIndices = { 0, 1, 2, 2, 3, 0 };
 
 	Mesh _quadMesh;
 
@@ -175,8 +150,6 @@ private:
     void init_default_renderpass();
 	void init_framebuffers();
     void init_sync_structures();
-    void init_pipelines();
-    bool load_shader_module(const char* filePath, VkShaderModule* outShaderModule);
     void init_3D_texture();
     void initKernels();
     void initSSBOs();

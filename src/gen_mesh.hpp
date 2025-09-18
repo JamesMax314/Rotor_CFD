@@ -13,5 +13,5 @@
 #include "vk_types.h"
 
 namespace MeshGen {
-    void generateMesh(std::vector<Vertex>& vertices, std::vector<uint16_t>& indices, const std::string& filename, float gridSize, float maxHeight);
+    void generateMesh(std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, const std::string& filename, float gridSize, float maxHeight);
 }

@@ -66,7 +66,8 @@ void VulkanEngine::init()
 
 	init_terrain_rendering();
 
-	load_terrain_model("Data/out_data.txt");
+	load_terrain_model("Data/out_data.txt"); 
+	// load_terrain_model("Data/test_data.txt"); 
 
 	// load_model();
 
@@ -170,105 +171,6 @@ void VulkanEngine::init_3D_texture()
     vkBindImageMemory(_device, _3DTexture, _3DTextureMemory, 0);
 
     _3DTextureView = vkinit::createImageView3D(_device, _3DTexture, VK_FORMAT_R32G32B32A32_SFLOAT);
-}
-
-
-void VulkanEngine::init_pipelines(){
-    VkShaderModule triangleFragShader;
-	if (!load_shader_module("build/shaders/triangle.frag.spv", &triangleFragShader))
-		std::cout << "Error when building the triangle fragment shader module" << std::endl;
-	else
-		std::cout << "Triangle fragment shader successfully loaded" << std::endl;
-
-	VkShaderModule triangleVertexShader;
-	if (!load_shader_module("build/shaders/triangle.vert.spv", &triangleVertexShader))
-		std::cout << "Error when building the triangle vertex shader module" << std::endl;
-	else
-		std::cout << "Triangle vertex shader successfully loaded" << std::endl;
-
-	std::vector<VkDescriptorSetLayoutBinding> bindings = {
-        {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}, // outputTexture
-    };
-
-	std::vector<VkPushConstantRange> pushRanges = {
-		{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(CamData)}
-	};
-
-	VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info(_device, bindings, pushRanges, _renderDescriptorSetLayouts);
-
-	VK_CHECK(vkCreatePipelineLayout(_device, &pipeline_layout_info, nullptr, &_trianglePipelineLayout));
-
-	PipelineBuilder pipelineBuilder;
-	pipelineBuilder._shaderStages.push_back(vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, triangleVertexShader));
-	pipelineBuilder._shaderStages.push_back(vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader));
-	pipelineBuilder._vertexInputInfo = vkinit::vertex_input_state_create_info();
-	pipelineBuilder._inputAssembly = vkinit::input_assembly_create_info(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-	pipelineBuilder._viewport.x = 0.0f;
-	pipelineBuilder._viewport.y = 0.0f;
-	pipelineBuilder._viewport.width = (float)_windowExtent.width;
-	pipelineBuilder._viewport.height = (float)_windowExtent.height;
-	pipelineBuilder._viewport.minDepth = 0.0f;
-	pipelineBuilder._viewport.maxDepth = 1.0f;
-	pipelineBuilder._scissor.offset = { 0, 0 };
-	pipelineBuilder._scissor.extent = _windowExtent;
-	pipelineBuilder._rasterizer = vkinit::rasterization_state_create_info(VK_POLYGON_MODE_FILL);
-	pipelineBuilder._multisampling = vkinit::multisampling_state_create_info();
-	pipelineBuilder._colorBlendAttachment = vkinit::color_blend_attachment_state();
-	pipelineBuilder._pipelineLayout = _trianglePipelineLayout;
-
-	_trianglePipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
-
-	vkDestroyShaderModule(_device, triangleFragShader, nullptr);
-	vkDestroyShaderModule(_device, triangleVertexShader, nullptr);
-
- 	_mainDeletionQueue.push_function([=]() {
-        vkDestroyPipeline(_device, _trianglePipeline, nullptr);
-		vkDestroyPipelineLayout(_device, _trianglePipelineLayout, nullptr);
-    });
-}
-
-bool VulkanEngine::load_shader_module(const char* filePath, VkShaderModule* outShaderModule)
-{
-	//open the file. With cursor at the end
-	std::ifstream file(filePath, std::ios::ate | std::ios::binary);
-
-	if (!file.is_open()) {
-        std::cout << "Failed to open file: " << filePath << std::endl;
-		return false;
-	}
-
-    //find what the size of the file is by looking up the location of the cursor
-    //because the cursor is at the end, it gives the size directly in bytes
-    size_t fileSize = (size_t)file.tellg();
-
-    //spirv expects the buffer to be on uint32, so make sure to reserve an int vector big enough for the entire file
-    std::vector<uint32_t> buffer(fileSize / sizeof(uint32_t));
-
-    //put file cursor at beginning
-    file.seekg(0);
-
-    //load the entire file into the buffer
-    file.read((char*)buffer.data(), fileSize);
-
-    //now that the file is loaded into the buffer, we can close it
-    file.close();
-
-    //create a new shader module, using the buffer we loaded
-    VkShaderModuleCreateInfo createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.pNext = nullptr;
-
-    //codeSize has to be in bytes, so multiply the ints in the buffer by size of int to know the real size of the buffer
-    createInfo.codeSize = buffer.size() * sizeof(uint32_t);
-    createInfo.pCode = buffer.data();
-
-    //check that the creation goes well.
-    VkShaderModule shaderModule;
-    if (vkCreateShaderModule(_device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-        return false;
-    }
-    *outShaderModule = shaderModule;
-    return true;
 }
 
 void VulkanEngine::init_sync_structures()
@@ -382,10 +284,10 @@ void VulkanEngine::init_default_renderpass()
     VkSubpassDependency dependency{};
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     dependency.dstSubpass = 0;
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     dependency.srcAccessMask = 0;
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
 	std::array<VkAttachmentDescription, 2> attachments = { color_attachment, depth_attachment };
 
@@ -619,8 +521,7 @@ void VulkanEngine::draw()
 
     //make a clear-color from frame number. This will flash with a 120*pi frame period.
 	VkClearValue clearValue[2];
-	float flash = abs(sin(_frameNumber / 120.f));
-	clearValue[0].color = { { 0.0f, 0.0f, flash, 1.0f } };
+	clearValue[0].color = { {202.0f/255.0f, 226.0f/255.0f, 232.0f/255.0f, 1.0f} };
 	clearValue[1].depthStencil = {1.0f, 0};
 
 	//start the main renderpass.
@@ -866,7 +767,7 @@ void VulkanEngine::load_terrain_model(const std::string &filename)
 	_cfd.load_terrain(_commandPool, _graphicsQueue, filename.c_str(), terrainScale);
 
 	std::vector<Vertex> vertices;
-	std::vector<uint16_t> indices;
+	std::vector<uint32_t> indices;
 	MeshGen::generateMesh(vertices, indices, filename, _res, terrainScale);
 
 	_terrainMesh.init(_device, _commandPool, _graphicsQueue, _allocator, vertices, indices);

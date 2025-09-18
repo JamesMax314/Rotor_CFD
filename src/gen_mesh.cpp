@@ -1,16 +1,16 @@
 #include "gen_mesh.hpp"
 
 std::vector<Vertex> generateGridVertices(const std::vector<std::vector<float>>& heightMap, float gridSize, float maxHeight) {
-    std::vector<Vertex> vertices;
+    std::vector<Vertex> vertices = {};
 
-    size_t rows = heightMap.size();
-    size_t cols = heightMap[0].size();
+    uint32_t rows = heightMap.size();
+    uint32_t cols = heightMap[0].size();
 
-    for (size_t row = 0; row < rows; ++row) {
-        for (size_t col = 0; col < cols; ++col) {
-            float x = col/gridSize;
+    for (uint32_t row = 0; row < rows; ++row) {
+        for (uint32_t col = 0; col < cols; ++col) {
+            float x = static_cast<float>(col)/gridSize;
             float y = 1 - heightMap[row][col] * maxHeight;
-            float z = row/gridSize;
+            float z = static_cast<float>(row)/gridSize;
 
             // Assign a color based on height (e.g., gradient from blue to green to red)
             // glm::vec3 color = glm::vec3(z / maxHeight, 1.0f - z / maxHeight, 0.5f);
@@ -22,17 +22,20 @@ std::vector<Vertex> generateGridVertices(const std::vector<std::vector<float>>& 
     return vertices;
 }
 
-std::vector<uint16_t> generateGridIndices(size_t rows, size_t cols) {
-    std::vector<uint16_t> indices;
+std::vector<uint32_t> generateGridIndices(uint32_t rows, uint32_t cols) {
+    std::vector<uint32_t> indices = {};
 
-    for (size_t row = 0; row < rows - 1; ++row) {
-        for (size_t col = 0; col < cols - 1; ++col) {
-            uint16_t topLeft = row * cols + col;
-            uint16_t topRight = topLeft + 1;
-            uint16_t bottomLeft = (row + 1) * cols + col;
-            uint16_t bottomRight = bottomLeft + 1;
+    for (uint32_t row = 0; row < rows-1; ++row) {
+        for (uint32_t col = 0; col < cols-1; ++col) {
+            uint32_t topLeft = row * cols + col;
+            uint32_t topRight = topLeft + 1;
+            uint32_t bottomLeft = (row + 1) * cols + col;
+            uint32_t bottomRight = bottomLeft + 1;
 
-            // First triangle
+            if (col > 3 || col < cols -5)
+            {
+
+            // // First triangle
             indices.push_back(topLeft);
             indices.push_back(topRight);
             indices.push_back(bottomLeft);
@@ -41,6 +44,7 @@ std::vector<uint16_t> generateGridIndices(size_t rows, size_t cols) {
             indices.push_back(topRight);
             indices.push_back(bottomRight);
             indices.push_back(bottomLeft);
+            }
         }
     }
 
@@ -72,7 +76,7 @@ std::vector<std::vector<float>> readHeightMap(const std::string& filename) {
     return heightMap;
 }
 
-void MeshGen::generateMesh(std::vector<Vertex>& vertices, std::vector<uint16_t>& indices, const std::string& filename, float gridSize, float maxHeight) {
+void MeshGen::generateMesh(std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, const std::string& filename, float gridSize, float maxHeight) {
     std::vector<std::vector<float>> heightMap = readHeightMap(filename);
     vertices = generateGridVertices(heightMap, gridSize, maxHeight);
     indices = generateGridIndices(heightMap.size(), heightMap[0].size());

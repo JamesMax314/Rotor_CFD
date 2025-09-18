@@ -143,12 +143,12 @@ struct Mesh {
 
     void init(VkDevice device, VkCommandPool commandPool, VkQueue queue, VmaAllocator allocator,
               const std::vector<Vertex>& vertices,
-              const std::vector<uint16_t>& indices);
+              const std::vector<uint32_t>& indices);
 
     // Upload CPU data to GPU buffers
     void upload(VmaAllocator allocator,
                 const std::vector<Vertex>& vertices,
-                const std::vector<uint16_t>& indices);
+                const std::vector<uint32_t>& indices);
 
     void draw(VkCommandBuffer cmd) const;
 

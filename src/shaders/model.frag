@@ -9,5 +9,5 @@ layout(location = 0) out vec4 outColor;
 
 void main() {
     // Flat color for testing
-    outColor = vec4(fragTexCoord.x, fragTexCoord.x, 0.0, 1.0);
+    outColor = vec4(1-fragTexCoord.x, 1-fragTexCoord.x, 1-fragTexCoord.x, 1.0);
 }
