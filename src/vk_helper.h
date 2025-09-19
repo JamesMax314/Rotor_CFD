@@ -16,10 +16,20 @@ namespace vkhelp
     VkDevice device,
     VkCommandPool commandPool,
     VkQueue queue,
-    VkImage image,
+    ResourceBinding& image,
     VkImageLayout oldLayout,
     VkImageLayout newLayout,
     VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
     uint32_t mipLevels = 1,
     uint32_t layerCount = 1);
+
+    void transitionImageBarrier(
+        VkCommandBuffer cmd,
+        ResourceBinding& imageBinding,
+        VkImageLayout oldLayout,
+        VkImageLayout newLayout,
+        VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        uint32_t mipLevels = 1,
+        uint32_t layerCount = 1
+    );
 } // namespace name

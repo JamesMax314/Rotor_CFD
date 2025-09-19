@@ -42,6 +42,10 @@ void VulkanEngine::init()
 
 	printf("init default renderpass complete\n");
 
+	init_offscreen_render_pass();
+
+	printf("init offscreen renderpass complete\n");
+
 	init_render_images();
 
 	printf("init depth image \n");
@@ -122,16 +126,36 @@ void VulkanEngine::initKernels() {
     pushConstantRange.size = sizeof(CamData);
 	std::vector<VkPushConstantRange> pushConstants = { pushConstantRange };
 
-	// If you want to use a subset of the resources and bindings, you can do so like this:
-	auto subsetResources = _cfd.get_texture_bindings();
-	// auto subsetResources = vkinit::subsetVector(_resourceBindings, activeBindings);
-	subsetResources[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; // Change type for rendering
-	std::vector<VkDescriptorSetLayoutBinding> subsetLayoutBindings = {{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
+	std::vector<ResourceBinding> subsetResources = {_cfd.get_texture_bindings()[0], _depthImage, _rasterColourImage};
+	for (int i=0; i<subsetResources.size(); i++) {
+		subsetResources[i].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	}
 
+	std::vector<VkDescriptorSetLayoutBinding> subsetLayoutBindings = {
+		{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+		{1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+		{2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
+
+	vkhelp::transitionImageLayout(
+		_device, _commandPool, _graphicsQueue,
+		subsetResources[1],
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VK_IMAGE_ASPECT_DEPTH_BIT
+	);
+
+	vkhelp::transitionImageLayout(
+		_device, _commandPool, _graphicsQueue,
+		subsetResources[2],
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VK_IMAGE_ASPECT_COLOR_BIT
+	);
+	
 	_rp = vkinit::initKernel(_device, KernelType::Graphics, 
 		{"build/shaders/triangle.vert.spv", "build/shaders/rayTrace.frag.spv"}, 
 		subsetLayoutBindings, pushConstants, _renderPass, _windowExtent);
-	
+
 	vkinit::updateKernelDescriptors(_device, _rp, subsetResources);
 
 	printf("Ray trace kernel initialized\n");
@@ -196,7 +220,7 @@ void VulkanEngine::init_sync_structures()
     });
 }
 
-void VulkanEngine::init_framebuffers()
+void VulkanEngine::init_render_framebuffers()
 {
     // Grab how many images we have in the swapchain
     const uint32_t swapchain_imagecount = _swapchainImages.size();
@@ -230,6 +254,36 @@ void VulkanEngine::init_framebuffers()
     });
 }
 
+void VulkanEngine::init_offscreen_framebuffer()
+{
+    // Grab how many images we have in the swapchain
+
+	{
+        // Two attachments: color (swapchain) + depth
+        std::array<VkImageView, 2> attachments = {
+            _rasterColourImage.imageView,   // Color
+            _depthImage.imageView      // Depth (same for all framebuffers)
+        };
+
+        VkFramebufferCreateInfo fb_info{};
+        fb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fb_info.pNext = nullptr;
+        fb_info.renderPass = _rasterRenderPass;
+        fb_info.attachmentCount = static_cast<uint32_t>(attachments.size());
+        fb_info.pAttachments = attachments.data();
+        fb_info.width = _windowExtent.width;
+        fb_info.height = _windowExtent.height;
+        fb_info.layers = 1;
+
+        VK_CHECK(vkCreateFramebuffer(_device, &fb_info, nullptr, &_offscreenFrameBuffer));
+    }
+
+    // Cleanup for all framebuffers
+    _mainDeletionQueue.push_function([=]() {
+		vkDestroyFramebuffer(_device, _offscreenFrameBuffer, nullptr);
+    });
+}
+
 
 void VulkanEngine::init_default_renderpass()
 {
@@ -252,6 +306,7 @@ void VulkanEngine::init_default_renderpass()
 
 	//after the renderpass ends, the image has to be on a layout ready for display
 	color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	// color_attachment.format = VK_FORMAT_R32G32B32A32_SFLOAT;
 
 	VkAttachmentReference color_attachment_ref = {};
 	//attachment number will index into the pAttachments array in the parent renderpass itself
@@ -306,6 +361,64 @@ void VulkanEngine::init_default_renderpass()
 	_mainDeletionQueue.push_function([=]() {
 		vkDestroyRenderPass(_device, _renderPass, nullptr);
     });
+}
+
+void VulkanEngine::init_offscreen_render_pass() {
+    // --- Color attachment ---
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;        // clear at start
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;      // store result
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;   // no need to preserve
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // for sampling in next pass
+
+    // --- Depth attachment ---
+    VkAttachmentDescription depthAttachment{};
+    depthAttachment.format = VK_FORMAT_D32_SFLOAT;
+    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // optional, we only need it as shader read
+    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    // --- References ---
+    VkAttachmentReference colorRef{};
+    colorRef.attachment = 0; // index in the attachment array
+    colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference depthRef{};
+    depthRef.attachment = 1;
+    depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    // --- Subpass ---
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorRef;
+    subpass.pDepthStencilAttachment = &depthRef;
+
+    // --- Render pass ---
+    std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+    renderPassInfo.pAttachments = attachments.data();
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+
+    VK_CHECK(vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_rasterRenderPass));
+}
+
+
+void VulkanEngine::init_framebuffers()
+{
+	init_render_framebuffers();
+	init_offscreen_framebuffer();
 }
 
 void VulkanEngine::init_swapchain()
@@ -387,7 +500,7 @@ void VulkanEngine::init_render_images()
 
 	vkhelp::transitionImageLayout(
 		_device, _commandPool, _graphicsQueue,
-		_depthImage.image,
+		_depthImage,
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		VK_IMAGE_ASPECT_DEPTH_BIT
@@ -395,7 +508,7 @@ void VulkanEngine::init_render_images()
 
 	vkhelp::transitionImageLayout(
 		_device, _commandPool, _graphicsQueue,
-		_rasterColourImage.image,
+		_rasterColourImage,
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		VK_IMAGE_ASPECT_COLOR_BIT
@@ -513,22 +626,37 @@ void VulkanEngine::draw()
 
 	//start the main renderpass.
 	//We will use the clear color from above, and the framebuffer of the index the swapchain gave us
-	VkRenderPassBeginInfo rpInfo = {};
-	rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	rpInfo.pNext = nullptr;
+	VkRenderPassBeginInfo rasterPassInfo = {};
+	rasterPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	rasterPassInfo.pNext = nullptr;
 
-	rpInfo.renderPass = _renderPass;
-	rpInfo.renderArea.offset.x = 0;
-	rpInfo.renderArea.offset.y = 0;
-	rpInfo.renderArea.extent = _windowExtent;
-	rpInfo.framebuffer = _framebuffers[swapchainImageIndex];
+	rasterPassInfo.renderPass = _rasterRenderPass;
+	rasterPassInfo.renderArea.offset.x = 0;
+	rasterPassInfo.renderArea.offset.y = 0;
+	rasterPassInfo.renderArea.extent = _windowExtent;
+	rasterPassInfo.framebuffer = _offscreenFrameBuffer;
 
 	//connect clear values
-	rpInfo.clearValueCount = 2;
-	rpInfo.pClearValues = clearValue;
+	rasterPassInfo.clearValueCount = 2;
+	rasterPassInfo.pClearValues = clearValue;
 
 
-	vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+	VkRenderPassBeginInfo rayPassInfo = {};
+	rayPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	rayPassInfo.pNext = nullptr;
+
+	rayPassInfo.renderPass = _renderPass;
+	rayPassInfo.renderArea.offset.x = 0;
+	rayPassInfo.renderArea.offset.y = 0;
+	rayPassInfo.renderArea.extent = _windowExtent;
+	rayPassInfo.framebuffer = _framebuffers[swapchainImageIndex];
+
+	//connect clear values
+	rayPassInfo.clearValueCount = 2;
+	rayPassInfo.pClearValues = clearValue;
+
+
+	vkCmdBeginRenderPass(cmd, &rasterPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _terrainRender.pipeline);
 
@@ -557,38 +685,42 @@ void VulkanEngine::draw()
     //finalize the render pass
 	vkCmdEndRenderPass(cmd);
 
+	// Transition image layout,
+	// vkhelp::transitionImageBarrier(cmd,
+	// 	_rasterColourImage,
+	// 	VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	// 	VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-	// vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+	// Update kernels to take output from previous subpass
 
-    // vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _rp.pipeline);
 
-	// vkCmdBindDescriptorSets(
-	// 	cmd,
-	// 	VK_PIPELINE_BIND_POINT_GRAPHICS,
-	// 	_rp.pipelineLayout,
-	// 	0, // first set
-	// 	1, &_rp.descriptorSet,
-	// 	0, nullptr
-	// );
+	vkCmdBeginRenderPass(cmd, &rayPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	// vkCmdPushConstants(
-	// 	cmd,
-	// 	_rp.pipelineLayout,
-	// 	VK_SHADER_STAGE_FRAGMENT_BIT,
-	// 	0,
-	// 	sizeof(CamData),
-	// 	&_camData
-	// );
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _rp.pipeline);
 
-	// _quadMesh.draw(cmd);
+	vkCmdBindDescriptorSets(
+		cmd,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		_rp.pipelineLayout,
+		0, // first set
+		1, &_rp.descriptorSet,
+		0, nullptr
+	);
 
-    // // vkCmdDraw(cmd, 3, 1, 0, 0);
+	vkCmdPushConstants(
+		cmd,
+		_rp.pipelineLayout,
+		VK_SHADER_STAGE_FRAGMENT_BIT,
+		0,
+		sizeof(CamData),
+		&_camData
+	);
 
-    // //finalize the render pass
-	// vkCmdEndRenderPass(cmd);
-	// //finalize the command buffer (we can no longer add commands, but it can now be executed)
-	// VK_CHECK(vkEndCommandBuffer(cmd));
+	_quadMesh.draw(cmd);
 
+
+    //finalize the render pass
+	vkCmdEndRenderPass(cmd);
 	//finalize the command buffer (we can no longer add commands, but it can now be executed)
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
@@ -603,13 +735,10 @@ void VulkanEngine::draw()
 	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
 	submit.pWaitDstStageMask = &waitStage;
-
 	submit.waitSemaphoreCount = 1;
 	submit.pWaitSemaphores = &_presentSemaphore;
-
 	submit.signalSemaphoreCount = 1;
 	submit.pSignalSemaphores = &_renderSemaphore;
-
 	submit.commandBufferCount = 1;
 	submit.pCommandBuffers = &cmd;
 
@@ -623,13 +752,10 @@ void VulkanEngine::draw()
 	VkPresentInfoKHR presentInfo = {};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presentInfo.pNext = nullptr;
-
 	presentInfo.pSwapchains = &_swapchain;
 	presentInfo.swapchainCount = 1;
-
 	presentInfo.pWaitSemaphores = &_renderSemaphore;
 	presentInfo.waitSemaphoreCount = 1;
-
 	presentInfo.pImageIndices = &swapchainImageIndex;
 
 	VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentInfo));
@@ -745,7 +871,7 @@ void VulkanEngine::init_terrain_rendering()
 
 	_terrainRender = vkinit::initKernel(_device, KernelType::Graphics, 
 		{"build/shaders/model.vert.spv", "build/shaders/model.frag.spv"}, 
-		layoutBindings, pushConstants, _renderPass, _windowExtent);
+		layoutBindings, pushConstants, _rasterRenderPass, _windowExtent);
 	
 	printf("Render kernel initialized\n");
 }

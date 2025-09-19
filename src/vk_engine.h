@@ -88,8 +88,10 @@ public:
     VkCommandBuffer _mainCommandBuffer; //the buffer we will record into
 
     VkRenderPass _renderPass;
+    VkRenderPass _rasterRenderPass;
 
 	std::vector<VkFramebuffer> _framebuffers;
+	VkFramebuffer _offscreenFrameBuffer;
 
     VkSemaphore _presentSemaphore, _renderSemaphore;
 	VkFence _renderFence;
@@ -149,7 +151,10 @@ private:
     void init_commands();
 	void init_allocator();
     void init_default_renderpass();
-	void init_framebuffers();
+    void init_offscreen_render_pass();
+    void init_framebuffers();
+    void init_render_framebuffers();
+	void init_offscreen_framebuffer();
     void init_sync_structures();
     void init_3D_texture();
     void initKernels();

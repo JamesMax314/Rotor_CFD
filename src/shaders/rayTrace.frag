@@ -3,6 +3,8 @@
 // Inputs
 layout(location = 0) in vec2 inUV;
 layout(set = 0, binding = 0) uniform sampler3D volumeTex;
+layout(set = 0, binding = 1) uniform sampler2D depthBuffer;
+layout(set = 0, binding = 2) uniform sampler2D colourBuffer;
 
 // Output
 layout(location = 0) out vec4 outFragColor;
@@ -21,7 +23,7 @@ vec3 cameraPos = cam.pos;
 vec3 cameraDir = cam.lookAt - cam.pos;
 vec3 cameraUp  = cam.camUp;
 
-float fov      = radians(45.0);
+float fov      = radians(60.0);
 float stepSize = 0.01; // Step size along the ray
 
 float randomStepModifier(vec2 st) {
@@ -86,7 +88,7 @@ void main() {
         vec4 col = vec4(density, density, density, density);
 
         // Front-to-back alpha blending
-        accumulatedColor.rgb += (1.0 - accumulatedColor.a) * col.rgb * col.a;
+        accumulatedColor.r += (1.0 - accumulatedColor.a) * col.r * col.a;
         accumulatedColor.a += (1.0 - accumulatedColor.a) * col.a;
 
         if (accumulatedColor.a >= 0.95)
@@ -97,5 +99,7 @@ void main() {
     }
 
     outFragColor = accumulatedColor;
+    outFragColor = mix(texture(colourBuffer, inUV), vec4(1-accumulatedColor.r, 0, 0, 1.0), 0.8);
+    // outFragColor = texture(depthBuffer, inUV);
     // outFragColor = vec4(jitter*20, 1.0, 1.0, 1.0); // visualize jitter
 }

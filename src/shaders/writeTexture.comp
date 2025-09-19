@@ -134,7 +134,7 @@ void main() {
 
     // imageStore(outputTexture, pos, vec4(abs(vel_x2), abs(vel_y2), abs(vel_z2), 1.0));
     imageStore(outputTexture, pos, vec4(density2[idx], 0, 0, 1.0));
-    // imageStore(outputTexture, pos, vec4(b[density_ind], 0, 0, 1.0));
+    imageStore(outputTexture, pos, vec4(b[density_ind], 0, 0, 1.0));
     // imageStore(outputTexture, pos, vec4(source[idx], 0.0, 0.0, 1.0));
     // imageStore(outputTexture, pos, vec4(density2[idx], density2[idx], density2[idx], 1.0));
     // imageStore(outputTexture, pos, vec4(fvel_x2, fvel_y2, fvel_z2, 1.0));
