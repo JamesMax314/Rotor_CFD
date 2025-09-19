@@ -84,6 +84,12 @@ void gauss_siedel(uint gridIndex) {
     p = clamp(p, 0, gridSize - 1); // just to be safe
     p_boundary = clamp(p_boundary, 1, gridSize); // boundary grid limits
 
+    // Source 2 is used to fix the velocity exiting a cell to create a source/sink cell
+    if (source2[gridIndex] > 0)
+    {
+        return;
+    }
+
     float vx0 = vel_x[get_x_vel_index(p)];
     float vx1 = vel_x[get_x_vel_index(ivec3(p.x+1, p.y, p.z))];
 
@@ -106,6 +112,14 @@ void gauss_siedel(uint gridIndex) {
     float boundCoeff = b100 + bm100 + b010 + bm010 + b001 + bm001;
 
     if (boundCoeff == 0.0) {
+        vel_x[get_x_vel_index(p)] = 0;
+        vel_x[get_x_vel_index(ivec3(p.x+1, p.y, p.z))] = 0;
+
+        vel_y[get_y_vel_index(p)] = 0;
+        vel_y[get_y_vel_index(ivec3(p.x, p.y+1, p.z))] = 0;
+
+        vel_z[get_z_vel_index(p)] = 0;
+        vel_z[get_z_vel_index(ivec3(p.x, p.y, p.z+1))] = 0;
         return;
     }
 

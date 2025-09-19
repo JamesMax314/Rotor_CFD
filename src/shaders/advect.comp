@@ -381,6 +381,11 @@ void main() {
     if (idx >= (gridSize+1) * gridSize * gridSize) {
         return;
     }
+
+    if (source2[idx] > 0) {
+        return;
+    }
+
     vec3 pos = get_grid_position_x(idx);
 
     vec3 vx = get_full_vel_x(pos);

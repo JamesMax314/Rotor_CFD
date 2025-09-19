@@ -448,13 +448,14 @@ void Cfd::evolve_cfd_cmd(VkCommandBuffer& commandBuffer)
 
 void Cfd::load_default_state(VkCommandPool& commandPool, VkQueue& queue)
 {
-    // std::vector<float> vxs = init_wall(10.0f, _res+1, _res, _res);
-    std::vector<float> vxs = init_vels(_res, 0.0f);
+    std::vector<float> vxs = init_wall(10.0f, _res+1, _res, _res);
+    // std::vector<float> vxs = init_vels(_res, 0.0f);
     std::vector<float> vys = init_vels(_res, 0.0f);
     std::vector<float> vzs = init_vels(_res, 0.0f);
     std::vector<float> densities = init_scalars(_res, 0.0f);
     std::vector<float> pressures = init_scalars(_res, 0.0f);
     std::vector<float> source = init_scalars(_res, 0.0f);
+    std::vector<float> source2 = init_scalars(_res, 0.0f);
     std::vector<float> boundariesVec = init_boundaries(_res+2);
 
     // set velocity x to 1 in the first quarter
@@ -467,31 +468,43 @@ void Cfd::load_default_state(VkCommandPool& commandPool, VkQueue& queue)
         }
     }
 
+    // Create a source wall of vx=1
+    // int boarder = 10;
+    // for (int z=0; z<_res-2*boarder; z++) {
+    //     for (int y=0; y<_res-2*boarder; y++) {
+    //         vxs[(_res+1)*_res*(z+boarder) + (_res+1)*(y+boarder) + 0] = 5.0f;
+    //         source2[(_res)*_res*(z+boarder) + (_res)*(y+boarder) + 0] = 1.0f;
+
+    //         vxs[(_res+1)*_res*(z+boarder) + (_res+1)*(y+boarder) + _res] = 5.0f;
+    //         source2[(_res)*_res*(z+boarder) + (_res)*(y+boarder) + _res] = 1.0f;
+    //     }
+    // }
+
     // Arbitrary Geometry
     // add_boundary_cylinder(boundariesVec, 10, 0, 0, _res+2);
     // add_boundary_cylinder(boundariesVec, 10, -20, -20, _res+2);
 
-    // int nStreams = 20;
-    // int streamSize = _res / nStreams;
-    // for (int i=1; i<nStreams-1; i++) {
-    //     densities[_res*_res*(_res/2) + _res*i*streamSize + 10] = 10.0f;
-    //     source[_res*_res*(_res/2) + _res*i*streamSize + 10] = 1.0f;
+    int nStreams = 20;
+    int streamSize = _res / nStreams;
+    for (int i=1; i<nStreams-1; i++) {
+        densities[_res*_res*(_res/2) + _res*i*streamSize + 10] = 10.0f;
+        source[_res*_res*(_res/2) + _res*i*streamSize + 10] = 1.0f;
 
-    //     densities[_res*_res*(_res/2) + _res*i*streamSize + 80] = 10.0f;
-    //     source[_res*_res*(_res/2) + _res*i*streamSize + 80] = 1.0f;
-    // }
+        densities[_res*_res*(_res/2) + _res*i*streamSize + 80] = 10.0f;
+        source[_res*_res*(_res/2) + _res*i*streamSize + 80] = 1.0f;
+    }
 
     // profuce 3d grid of 20x20x20 streams
-    int nStreams3D = 4;
-    int streamSize3D = _res / nStreams3D;
-    for (int i=1; i<nStreams3D; i++) {
-        for (int j=1; j<nStreams3D; j++) {
-            for (int k=1; k<nStreams3D; k++) {
-                densities[_res*_res*(k*streamSize3D) + _res*i*streamSize3D + j*streamSize3D] = 10.0f;
-                source[_res*_res*(k*streamSize3D) + _res*i*streamSize3D + j*streamSize3D] = 1.0f;
-            }
-        }
-    }
+    // int nStreams3D = 4;
+    // int streamSize3D = _res / nStreams3D;
+    // for (int i=1; i<nStreams3D; i++) {
+    //     for (int j=1; j<nStreams3D; j++) {
+    //         for (int k=1; k<nStreams3D; k++) {
+    //             densities[_res*_res*(k*streamSize3D) + _res*i*streamSize3D + j*streamSize3D] = 10.0f;
+    //             source[_res*_res*(k*streamSize3D) + _res*i*streamSize3D + j*streamSize3D] = 1.0f;
+    //         }
+    //     }
+    // }
 
     // densities[_res*_res*_res + _res*_res + _res-1] = 10.0f; // last cell is 0 density
     // source[_res*_res*_res + _res*_res + _res-1] = 10.0f; // last cell is 0 density
