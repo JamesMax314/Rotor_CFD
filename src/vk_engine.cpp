@@ -228,9 +228,9 @@ void VulkanEngine::init_render_framebuffers()
 
     for (uint32_t i = 0; i < swapchain_imagecount; i++) {
         // Two attachments: color (swapchain) + depth
-        std::array<VkImageView, 2> attachments = {
+        std::array<VkImageView, 1> attachments = {
             _swapchainImageViews[i],   // Color
-            _depthImage.imageView      // Depth (same for all framebuffers)
+            // _depthImage.imageView      // Depth (same for all framebuffers)
         };
 
         VkFramebufferCreateInfo fb_info{};
@@ -314,26 +314,26 @@ void VulkanEngine::init_default_renderpass()
 	color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 	    // --- Depth attachment ---
-    VkAttachmentDescription depth_attachment{};
-    depth_attachment.format = VK_FORMAT_D32_SFLOAT; // must match the format of your depth image
-    depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;   // clear depth at start of frame
-    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // we don’t need depth after render
-    depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    // VkAttachmentDescription depth_attachment{};
+    // depth_attachment.format = VK_FORMAT_D32_SFLOAT; // must match the format of your depth image
+    // depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    // depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;   // clear depth at start of frame
+    // depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // we don’t need depth after render
+    // depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    // depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    // depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    // depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-    VkAttachmentReference depth_attachment_ref{};
-    depth_attachment_ref.attachment = 1;
-    depth_attachment_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    // VkAttachmentReference depth_attachment_ref{};
+    // depth_attachment_ref.attachment = 1;
+    // depth_attachment_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
 	//we are going to create 1 subpass, which is the minimum you can do
 	VkSubpassDescription subpass = {};
 	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subpass.colorAttachmentCount = 1;
 	subpass.pColorAttachments = &color_attachment_ref;
-	subpass.pDepthStencilAttachment = &depth_attachment_ref;
+	// subpass.pDepthStencilAttachment = &depth_attachment_ref;
 
 	// --- Dependencies ---
     VkSubpassDependency dependency{};
@@ -344,7 +344,7 @@ void VulkanEngine::init_default_renderpass()
     dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
-	std::array<VkAttachmentDescription, 2> attachments = { color_attachment, depth_attachment };
+	std::array<VkAttachmentDescription, 1> attachments = { color_attachment };
 
     VkRenderPassCreateInfo render_pass_info{};
     render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -380,7 +380,7 @@ void VulkanEngine::init_offscreen_render_pass() {
     depthAttachment.format = VK_FORMAT_D32_SFLOAT;
     depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
     depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // optional, we only need it as shader read
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // optional, we only need it as shader read
     depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -652,8 +652,16 @@ void VulkanEngine::draw()
 	rayPassInfo.framebuffer = _framebuffers[swapchainImageIndex];
 
 	//connect clear values
-	rayPassInfo.clearValueCount = 2;
+	rayPassInfo.clearValueCount = 1;
 	rayPassInfo.pClearValues = clearValue;
+
+	vkhelp::transitionImageLayout(_device, 
+		_commandPool,
+		_graphicsQueue,
+		_depthImage,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_ASPECT_DEPTH_BIT);
 
 
 	vkCmdBeginRenderPass(cmd, &rasterPassInfo, VK_SUBPASS_CONTENTS_INLINE);
@@ -686,10 +694,11 @@ void VulkanEngine::draw()
 	vkCmdEndRenderPass(cmd);
 
 	// Transition image layout,
-	// vkhelp::transitionImageBarrier(cmd,
-	// 	_rasterColourImage,
-	// 	VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	// 	VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	vkhelp::transitionImageBarrier(cmd,
+		_depthImage,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VK_IMAGE_ASPECT_DEPTH_BIT);
 
 	// Update kernels to take output from previous subpass
 

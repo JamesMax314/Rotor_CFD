@@ -8,9 +8,9 @@ std::vector<Vertex> generateGridVertices(const std::vector<std::vector<float>>& 
 
     for (uint32_t row = 0; row < rows; ++row) {
         for (uint32_t col = 0; col < cols; ++col) {
-            float x = static_cast<float>(col)/gridSize;
+            float x = static_cast<float>(col)/cols;
             float y = 1 - heightMap[row][col] * maxHeight;
-            float z = static_cast<float>(row)/gridSize;
+            float z = static_cast<float>(row)/cols;
 
             // Assign a color based on height (e.g., gradient from blue to green to red)
             // glm::vec3 color = glm::vec3(z / maxHeight, 1.0f - z / maxHeight, 0.5f);

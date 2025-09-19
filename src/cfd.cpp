@@ -482,16 +482,16 @@ void Cfd::load_default_state(VkCommandPool& commandPool, VkQueue& queue)
     // }
 
     // profuce 3d grid of 20x20x20 streams
-    int nStreams3D = 10;
+    int nStreams3D = 4;
     int streamSize3D = _res / nStreams3D;
-    for (int i=1; i<nStreams3D-1; i++) {
-        for (int j=1; j<nStreams3D-1; j++) {
-            for (int k=1; k<nStreams3D-1; k++) {
+    for (int i=1; i<nStreams3D; i++) {
+        for (int j=1; j<nStreams3D; j++) {
+            for (int k=1; k<nStreams3D; k++) {
                 densities[_res*_res*(k*streamSize3D) + _res*i*streamSize3D + j*streamSize3D] = 10.0f;
                 source[_res*_res*(k*streamSize3D) + _res*i*streamSize3D + j*streamSize3D] = 1.0f;
             }
         }
-    }    
+    }
 
     // densities[_res*_res*_res + _res*_res + _res-1] = 10.0f; // last cell is 0 density
     // source[_res*_res*_res + _res*_res + _res-1] = 10.0f; // last cell is 0 density
