@@ -116,6 +116,7 @@ public:
 	Kernel _terrainRender{};
 
 	ResourceBinding _depthImage;
+	ResourceBinding _rasterColourImage;
 
     VkDeviceSize bufferSize = _res * _res * _res * sizeof(float);
 
@@ -143,7 +144,7 @@ public:
 private:
 
 	void init_vulkan();
-	void init_depth_image();
+	void init_render_images();
     void init_swapchain();
     void init_commands();
 	void init_allocator();

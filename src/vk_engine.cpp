@@ -42,7 +42,7 @@ void VulkanEngine::init()
 
 	printf("init default renderpass complete\n");
 
-	init_depth_image();
+	init_render_images();
 
 	printf("init depth image \n");
 
@@ -377,42 +377,29 @@ void VulkanEngine::init_vulkan()
 	_graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
 }
 
-void VulkanEngine::init_depth_image()
+void VulkanEngine::init_render_images()
 {
  	_depthImage = {1, bufferSize, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, DEPTH_IMAGE};
+ 	_rasterColourImage = {2, bufferSize, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, COLOR_IMAGE};
 
     vkinit::createResource(_device, _allocator, _depthImage, {_windowExtent.width, _windowExtent.height, 1}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 2);
+    vkinit::createResource(_device, _allocator, _rasterColourImage, {_windowExtent.width, _windowExtent.height, 1}, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 2);
 
-	VkCommandBuffer cmd = vkinit::beginSingleTimeCommands(_device, _commandPool);
+	vkhelp::transitionImageLayout(
+		_device, _commandPool, _graphicsQueue,
+		_depthImage.image,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_ASPECT_DEPTH_BIT
+	);
 
-	VkImageMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    barrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = _depthImage.image;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
-
-    barrier.srcAccessMask = 0;
-    barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | 
-                            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-    vkCmdPipelineBarrier(
-        cmd,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,  // srcStage
-        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, // dstStage
-        0,
-        0, nullptr,
-        0, nullptr,
-        1, &barrier
-    );
-
-	vkinit::endSingleTimeCommands(_device, _commandPool, _graphicsQueue, cmd);
+	vkhelp::transitionImageLayout(
+		_device, _commandPool, _graphicsQueue,
+		_rasterColourImage.image,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_ASPECT_COLOR_BIT
+	);
 }
 
 void VulkanEngine::init_commands()
@@ -540,6 +527,37 @@ void VulkanEngine::draw()
 	rpInfo.clearValueCount = 2;
 	rpInfo.pClearValues = clearValue;
 
+
+	vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _terrainRender.pipeline);
+
+	vkCmdBindDescriptorSets(
+		cmd,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		_terrainRender.pipelineLayout,
+		0, // first set
+		1, &_terrainRender.descriptorSet,
+		0, nullptr
+	);
+
+	vkCmdPushConstants(
+		cmd,
+		_terrainRender.pipelineLayout,
+		VK_SHADER_STAGE_VERTEX_BIT,
+		0,
+		sizeof(CamMatrices),
+		&_camMatrices
+	);
+
+	_terrainMesh.draw(cmd);
+
+    // vkCmdDraw(cmd, 3, 1, 0, 0);
+
+    //finalize the render pass
+	vkCmdEndRenderPass(cmd);
+
+
 	// vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     // vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _rp.pipeline);
@@ -571,35 +589,6 @@ void VulkanEngine::draw()
 	// //finalize the command buffer (we can no longer add commands, but it can now be executed)
 	// VK_CHECK(vkEndCommandBuffer(cmd));
 
-
-	vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _terrainRender.pipeline);
-
-	vkCmdBindDescriptorSets(
-		cmd,
-		VK_PIPELINE_BIND_POINT_GRAPHICS,
-		_terrainRender.pipelineLayout,
-		0, // first set
-		1, &_terrainRender.descriptorSet,
-		0, nullptr
-	);
-
-	vkCmdPushConstants(
-		cmd,
-		_terrainRender.pipelineLayout,
-		VK_SHADER_STAGE_VERTEX_BIT,
-		0,
-		sizeof(CamMatrices),
-		&_camMatrices
-	);
-
-	_terrainMesh.draw(cmd);
-
-    // vkCmdDraw(cmd, 3, 1, 0, 0);
-
-    //finalize the render pass
-	vkCmdEndRenderPass(cmd);
 	//finalize the command buffer (we can no longer add commands, but it can now be executed)
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
