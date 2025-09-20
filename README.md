@@ -8,7 +8,7 @@ The aim of Rotor CFD is to aid in the identification of sorces aerodynamic rotor
 - Volumetric rendering has been implimented within a fragment shader for smoke visualisation.
 - A rasteriser generates the view of the terrain mesh from real word lidar data.
 
-![Alt text](images/progress2.png)
+![Alt text](images/progress3.png)
 
 Smoke trails over the Howgills depicting the air flow resulting from an initial pulse in the +x direction.
 

@@ -71,6 +71,7 @@ void VulkanEngine::init()
 	init_terrain_rendering();
 
 	load_terrain_model("Data/out_data.txt"); 
+	// load_terrain_model("Data/penyghent.txt"); 
 	// load_terrain_model("Data/test_data.txt"); 
 
 	// load_model();
@@ -887,7 +888,7 @@ void VulkanEngine::init_terrain_rendering()
 
 void VulkanEngine::load_terrain_model(const std::string &filename)
 {
-	float terrainScale = 0.7;
+	float terrainScale = 0.6;
 	_cfd.load_terrain(_commandPool, _graphicsQueue, filename.c_str(), terrainScale);
 
 	std::vector<Vertex> vertices;

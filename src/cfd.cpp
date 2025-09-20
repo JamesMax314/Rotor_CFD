@@ -18,6 +18,14 @@ std::vector<float> init_scalars(size_t gridsize, float base_val) {
     return scalars;
 }
 
+std::vector<glm::vec4> init_vec4(size_t gridsize, float base_val) {
+    std::vector<glm::vec4> vectors(gridsize * gridsize * gridsize);
+    for (size_t i = 0; i < vectors.size(); i += 1) {
+        vectors[i] = glm::vec4(base_val);
+    }
+    return vectors;
+}
+
 std::vector<float> init_vels(size_t gridsize, float base_val) {
     std::vector<float> scalars((gridsize+1) * gridsize * gridsize);
     for (size_t i = 0; i < scalars.size(); i += 1) {
@@ -320,6 +328,7 @@ void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
     _res = res;
 
     const VkDeviceSize bufferSize = _res * _res * _res * sizeof(float);
+    const VkDeviceSize bufferSizeSource2 = _res * _res * _res * sizeof(glm::vec4);
     const VkDeviceSize velBufferSize = (_res+1) * _res * _res * sizeof(float);
     const VkDeviceSize boarderBufferSize = (_res+2) * (_res+2) * (_res+2) * sizeof(float);
 
@@ -329,19 +338,20 @@ void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
 
     _density = {3, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
     _pressure = {4, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
-    _source = {4, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _source = {5, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
 
-    _vx2 = {5, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
-    _vy2 = {6, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
-    _vz2 = {7, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _vx2 = {6, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _vy2 = {7, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _vz2 = {8, velBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
 
-    _density2 = {8, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
-    _pressure2 = {9, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
-    _source2 = {9, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _density2 = {9, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _pressure2 = {10, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
 
-    _boundaries = {10, boarderBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+    _source2 = {11, bufferSizeSource2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
 
-    _densityTex = {11, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, COLOR_IMAGE};
+    _boundaries = {12, boarderBufferSize, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BUFFER};
+
+    _densityTex = {13, bufferSize, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, COLOR_IMAGE};
 
     vkinit::createResource(_device, _allocator, _vx);
     vkinit::createResource(_device, _allocator, _vy);
@@ -382,7 +392,7 @@ void Cfd::init_cfd(VkDevice &device, VmaAllocator &allocator, int res)
 	std::swap(swappedBindings[2], swappedBindings[8]);
 	std::swap(swappedBindings[3], swappedBindings[9]);
 	std::swap(swappedBindings[4], swappedBindings[10]);
-    std::swap(swappedBindings[5], swappedBindings[11]);
+    // std::swap(swappedBindings[5], swappedBindings[11]);
 
     printf("Creating CFD Kernels...\n");
 
@@ -448,23 +458,30 @@ void Cfd::evolve_cfd_cmd(VkCommandBuffer& commandBuffer)
 
 void Cfd::load_default_state(VkCommandPool& commandPool, VkQueue& queue)
 {
-    std::vector<float> vxs = init_wall(10.0f, _res+1, _res, _res);
-    // std::vector<float> vxs = init_vels(_res, 0.0f);
+    // std::vector<float> vxs = init_wall(20.0f, _res+1, _res, _res);
+    std::vector<float> vxs = init_vels(_res, 0.0f);
     std::vector<float> vys = init_vels(_res, 0.0f);
     std::vector<float> vzs = init_vels(_res, 0.0f);
     std::vector<float> densities = init_scalars(_res, 0.0f);
     std::vector<float> pressures = init_scalars(_res, 0.0f);
     std::vector<float> source = init_scalars(_res, 0.0f);
-    std::vector<float> source2 = init_scalars(_res, 0.0f);
+    std::vector<glm::vec4> source2 = init_vec4(_res, 0.0f);
     std::vector<float> boundariesVec = init_boundaries(_res+2);
 
-    // set velocity x to 1 in the first quarter
-    int boarder = 40;
+    // // set velocity x to 1 in the first quarter
+    // int boarder = 20;
+    // for (int z=0; z<_res-2*boarder; z++) {
+    //     for (int y=0; y<_res-2*boarder; y++) {
+    //         for (int x=0; x<_res/4; x++) {
+    //             vxs[(_res+1)*_res*(z+boarder) + (_res+1)*(y+boarder) + x] = 10.0f;
+    //         }
+    //     }
+    // }
+
+    int boarder = 1;
     for (int z=0; z<_res-2*boarder; z++) {
         for (int y=0; y<_res-2*boarder; y++) {
-            for (int x=0; x<_res/4; x++) {
-                vxs[(_res+1)*_res*(z+boarder) + (_res+1)*(y+boarder) + x] = 20.0f;
-            }
+            source2[(_res)*_res*(z+boarder) + (_res)*(y+boarder)] = glm::vec4(10, 0, 0, 1);
         }
     }
 
@@ -480,31 +497,34 @@ void Cfd::load_default_state(VkCommandPool& commandPool, VkQueue& queue)
     //     }
     // }
 
+    // vxs[(_res+1)*_res*(_res/2) + (_res+1)*(_res/2) + _res/2] = 100.0f;
+    // source2[(_res)*_res*(_res/2) + (_res)*(_res/2) + _res/2] = 1.0f;
+
     // Arbitrary Geometry
     // add_boundary_cylinder(boundariesVec, 10, 0, 0, _res+2);
     // add_boundary_cylinder(boundariesVec, 10, -20, -20, _res+2);
 
-    int nStreams = 20;
-    int streamSize = _res / nStreams;
-    for (int i=1; i<nStreams-1; i++) {
-        densities[_res*_res*(_res/2) + _res*i*streamSize + 10] = 10.0f;
-        source[_res*_res*(_res/2) + _res*i*streamSize + 10] = 1.0f;
+    // int nStreams = 5;
+    // int streamSize = _res / nStreams;
+    // for (int i=1; i<nStreams-1; i++) {
+    //     densities[_res*_res*(_res/2) + _res*i*streamSize + 10] = 10.0f;
+    //     source[_res*_res*(_res/2) + _res*i*streamSize + 10] = 1.0f;
 
-        densities[_res*_res*(_res/2) + _res*i*streamSize + 80] = 10.0f;
-        source[_res*_res*(_res/2) + _res*i*streamSize + 80] = 1.0f;
-    }
+    //     densities[_res*_res*(_res/2) + _res*i*streamSize + 80] = 10.0f;
+    //     source[_res*_res*(_res/2) + _res*i*streamSize + 80] = 1.0f;
+    // }
 
     // profuce 3d grid of 20x20x20 streams
-    // int nStreams3D = 4;
-    // int streamSize3D = _res / nStreams3D;
-    // for (int i=1; i<nStreams3D; i++) {
-    //     for (int j=1; j<nStreams3D; j++) {
-    //         for (int k=1; k<nStreams3D; k++) {
-    //             densities[_res*_res*(k*streamSize3D) + _res*i*streamSize3D + j*streamSize3D] = 10.0f;
-    //             source[_res*_res*(k*streamSize3D) + _res*i*streamSize3D + j*streamSize3D] = 1.0f;
-    //         }
-    //     }
-    // }
+    int nStreams3D = 6;
+    int streamSize3D = _res / nStreams3D;
+    for (int i=3; i<nStreams3D; i++) {
+        for (int j=1; j<nStreams3D; j++) {
+            for (int k=1; k<nStreams3D; k++) {
+                densities[_res*_res*(k*streamSize3D) + _res*i*streamSize3D + j*streamSize3D] = 10.0f;
+                source[_res*_res*(k*streamSize3D) + _res*i*streamSize3D + j*streamSize3D] = 1.0f;
+            }
+        }
+    }
 
     // densities[_res*_res*_res + _res*_res + _res-1] = 10.0f; // last cell is 0 density
     // source[_res*_res*_res + _res*_res + _res-1] = 10.0f; // last cell is 0 density
@@ -519,6 +539,7 @@ void Cfd::load_default_state(VkCommandPool& commandPool, VkQueue& queue)
     vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _density, densities.data(), densities.size() * sizeof(float));
     vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _pressure, pressures.data(), pressures.size() * sizeof(float));
     vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _source, source.data(), source.size() * sizeof(float));
+    vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _source2, source2.data(), source2.size() * sizeof(glm::vec4));
     // vkhelp::copy_to_buffer(_device, _allocator, commandPool, queue, _boundaries, boundariesVec.data(), boundariesVec.size() * sizeof(float));
 
     // Test read back

@@ -52,6 +52,14 @@ vec3 computeRayDir(vec3 cameraPos, vec3 cameraDir, vec3 cameraUp, vec2 fragUV, f
     return rayDir;
 }
 
+float computeRayAngle(vec3 cameraDir, vec3 rayDir) {
+    vec3 normCameraDir = normalize(cameraDir);
+    vec3 normRayDir = normalize(rayDir);
+    vec3 crossProduct = cross(normCameraDir, normRayDir);
+    float sinAng = length(crossProduct);
+    return asin(sinAng);
+}
+
 bool intersectBox(vec3 rayOrigin, vec3 rayDir, out float tNear, out float tFar) {
     vec3 invDir = 1.0 / rayDir;
     vec3 t0s = (vec3(0.0) - rayOrigin) * invDir;     // min bounds
@@ -95,9 +103,13 @@ void main() {
     float sceneDepth = texture(depthBuffer, inUV).r;
     float linearDepth = linearizeDepth(sceneDepth, nearPlane, farPlane);
 
-    while (t < tFar && t < linearDepth) {
+    float rayAng = computeRayAngle(cameraDir, rayDir);
+
+    while (t < tFar && t*cos(rayAng) < linearDepth) {
         float density = texture(volumeTex, samplePos).r;
-        vec4 col = vec4(density, density, density, density);
+        float up = texture(volumeTex, samplePos).g;
+        float down = texture(volumeTex, samplePos).b;
+        vec4 col = density*vec4(down, up, 1.0, 1.0);
 
         // Front-to-back alpha blending
         accumulatedColor.rgb += (1.0 - accumulatedColor.a) * col.rgb * col.a;

@@ -33,7 +33,7 @@ layout(binding = 7) buffer velYBuff2 { float vel_y2[]; };
 layout(binding = 8) buffer velZBuff2 { float vel_z2[]; };
 layout(binding = 9) buffer density2Buff { float density2[]; };
 layout(binding = 10) buffer pressure2Buff { float pressure2[]; };
-layout(binding = 11) buffer source2Buff { float source2[]; };
+layout(binding = 11) buffer source2Buff { vec4 source2[]; };
 
 layout(binding = 12) buffer boundariesBuff { float b[]; };
 
@@ -379,10 +379,6 @@ float interpolate_velZ(vec3 pos) {
 void main() {
     uint idx = gl_GlobalInvocationID.x;
     if (idx >= (gridSize+1) * gridSize * gridSize) {
-        return;
-    }
-
-    if (source2[idx] > 0) {
         return;
     }
 

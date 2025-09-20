@@ -24,7 +24,7 @@ layout(binding = 7) buffer velYBuff2 { float vel_y2[]; };
 layout(binding = 8) buffer velZBuff2 { float vel_z2[]; };
 layout(binding = 9) buffer density2Buff { float density2[]; };
 layout(binding = 10) buffer pressure2Buff { float pressure2[]; };
-layout(binding = 11) buffer source2Buff { float source2[]; };
+layout(binding = 11) buffer source2Buff { vec4 source2[]; };
 
 layout(binding = 12) buffer boundariesBuff { float b[]; };
 
@@ -35,7 +35,7 @@ const float dx = 1.0;
 const float dt = 0.1;
 const int dim = 3;
 // const float overRelaxation = 1.9;
-const float overRelaxation = 1.6;
+const float overRelaxation = 1.9;
 
 vec3 get_grid_position(uint index) {
     uint x = index % gridSize;
@@ -84,12 +84,6 @@ void gauss_siedel(uint gridIndex) {
     p = clamp(p, 0, gridSize - 1); // just to be safe
     p_boundary = clamp(p_boundary, 1, gridSize); // boundary grid limits
 
-    // Source 2 is used to fix the velocity exiting a cell to create a source/sink cell
-    if (source2[gridIndex] > 0)
-    {
-        return;
-    }
-
     float vx0 = vel_x[get_x_vel_index(p)];
     float vx1 = vel_x[get_x_vel_index(ivec3(p.x+1, p.y, p.z))];
 
@@ -133,6 +127,25 @@ void gauss_siedel(uint gridIndex) {
     vel_z[get_z_vel_index(ivec3(p.x, p.y, p.z+1))] = vz1 - b001*div/boundCoeff;
 }
 
+void reset_sources(uint gridIndex) {
+    vec3 pos = get_grid_position(gridIndex);
+    ivec3 p = ivec3(floor(pos)); // base grid coord
+    p = clamp(p, 0, gridSize - 1); // just to be safe
+
+    vec4 currentSource = source2[gridIndex];
+
+    if (currentSource.w > 0) {
+        vel_x[get_x_vel_index(p)] = currentSource.x/2.0;
+        vel_x[get_x_vel_index(ivec3(p.x+1, p.y, p.z))] = currentSource.x/2.0;
+
+        vel_y[get_y_vel_index(p)] = currentSource.y/2.0;
+        vel_y[get_y_vel_index(ivec3(p.x, p.y+1, p.z))] = currentSource.y/2.0;
+
+        vel_z[get_z_vel_index(p)] = currentSource.z/2.0;
+        vel_z[get_z_vel_index(ivec3(p.x, p.y, p.z+1))] = currentSource.z/2.0;
+    }
+}
+
 void main() {
     uint idx = gl_GlobalInvocationID.x;
     if (idx >= (gridSize) * gridSize * gridSize) {
@@ -144,6 +157,7 @@ void main() {
     }
 
     gauss_siedel(idx);
+    reset_sources(idx);
 
     return;
 }
